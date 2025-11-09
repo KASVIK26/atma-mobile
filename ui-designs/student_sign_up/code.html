@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Atma Mobile - Student Sign Up</title>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#2463eb",
+              "background-light": "#f6f6f8",
+              "background-dark": "#111621",
+            },
+            fontFamily: {
+              "display": ["Lexend"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display">
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
+<!-- TopAppBar -->
+<div class="flex items-center bg-background-light dark:bg-background-dark p-4 justify-between">
+<div class="text-[#0e121b] dark:text-white flex size-12 shrink-0 items-center justify-start text-primary" data-icon="Chalkboard" data-size="24px" data-weight="regular">
+<span class="material-symbols-outlined text-3xl">school</span>
+</div>
+<h2 class="text-[#0e121b] dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1">Atma Mobile</h2>
+<div class="flex w-12 items-center justify-end">
+<button class="flex max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-full h-12 bg-transparent text-[#0e121b] dark:text-white gap-2 text-base font-bold leading-normal tracking-[0.015em] min-w-0 p-0">
+<div class="text-[#0e121b] dark:text-white" data-icon="User" data-size="24px" data-weight="regular">
+<span class="material-symbols-outlined">account_circle</span>
+</div>
+</button>
+</div>
+</div>
+<!-- HeadlineText -->
+<h1 class="text-[#0e121b] dark:text-white tracking-light text-[32px] font-bold leading-tight px-4 text-left pb-1 pt-4">Create Your Student Account</h1>
+<!-- BodyText -->
+<p class="text-[#4d6599] dark:text-gray-400 text-base font-normal leading-normal pb-3 px-4">Enter your details to get started.</p>
+<!-- Avatar Upload -->
+<div class="flex items-center px-4 py-3 justify-center">
+<div class="relative">
+<div class="overflow-visible w-24">
+<div class="bg-center bg-no-repeat aspect-square bg-cover border-background-light dark:border-background-dark bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-full flex items-center justify-center size-24 border-4" data-alt="Profile image placeholder" style="background-image: url();">
+<span class="material-symbols-outlined text-4xl">person</span>
+</div>
+</div>
+<button class="absolute bottom-0 right-0 flex items-center justify-center size-8 bg-primary text-white rounded-full border-2 border-background-light dark:border-background-dark">
+<span class="material-symbols-outlined text-lg">add_a_photo</span>
+</button>
+</div>
+</div>
+<div class="h-4"></div>
+<!-- Form Fields -->
+<div class="flex flex-col gap-4 px-4">
+<!-- Full Name TextField -->
+<label class="flex flex-col w-full">
+<p class="text-[#0e121b] dark:text-white text-base font-medium leading-normal pb-2">Full Name</p>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-[#0e121b] dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-gray-300 dark:border-gray-700 bg-background-light dark:bg-background-dark focus:border-primary h-14 placeholder:text-[#4d6599] p-[15px] text-base font-normal leading-normal" placeholder="Enter your full name" value=""/>
+</label>
+<!-- Email TextField -->
+<label class="flex flex-col w-full">
+<p class="text-[#0e121b] dark:text-white text-base font-medium leading-normal pb-2">Email</p>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-[#0e121b] dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-gray-300 dark:border-gray-700 bg-background-light dark:bg-background-dark focus:border-primary h-14 placeholder:text-[#4d6599] p-[15px] text-base font-normal leading-normal" placeholder="Enter your email address" type="email" value=""/>
+</label>
+<!-- University Dropdown -->
+<label class="flex flex-col w-full">
+<p class="text-[#0e121b] dark:text-white text-base font-medium leading-normal pb-2">University</p>
+<div class="relative">
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-[#0e121b] dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-gray-300 dark:border-gray-700 bg-background-light dark:bg-background-dark focus:border-primary h-14 placeholder:text-[#4d6599] p-[15px] text-base font-normal leading-normal pr-10" placeholder="Search for your university" value=""/>
+<div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-[#4d6599] dark:text-gray-400">
+<span class="material-symbols-outlined">search</span>
+</div>
+</div>
+</label>
+<!-- Enrollment Number TextField -->
+<label class="flex flex-col w-full">
+<p class="text-[#0e121b] dark:text-white text-base font-medium leading-normal pb-2">Enrollment Number</p>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-[#0e121b] dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-gray-300 dark:border-gray-700 bg-background-light dark:bg-background-dark focus:border-primary h-14 placeholder:text-[#4d6599] p-[15px] text-base font-normal leading-normal" placeholder="Enter your enrollment number" value=""/>
+</label>
+<!-- Password TextField -->
+<label class="flex flex-col w-full">
+<p class="text-[#0e121b] dark:text-white text-base font-medium leading-normal pb-2">Password</p>
+<div class="relative">
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-[#0e121b] dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-gray-300 dark:border-gray-700 bg-background-light dark:bg-background-dark focus:border-primary h-14 placeholder:text-[#4d6599] p-[15px] text-base font-normal leading-normal pr-12" placeholder="Enter your password" type="password" value=""/>
+<button class="absolute inset-y-0 right-0 flex items-center pr-4 text-[#4d6599] dark:text-gray-400">
+<span class="material-symbols-outlined">visibility_off</span>
+</button>
+</div>
+</label>
+<!-- Confirm Password TextField -->
+<label class="flex flex-col w-full">
+<p class="text-[#0e121b] dark:text-white text-base font-medium leading-normal pb-2">Confirm Password</p>
+<div class="relative">
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-[#0e121b] dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border-red-500 bg-background-light dark:bg-background-dark focus:border-primary h-14 placeholder:text-[#4d6599] p-[15px] text-base font-normal leading-normal pr-12" placeholder="Confirm your password" type="password" value=""/>
+<button class="absolute inset-y-0 right-0 flex items-center pr-4 text-[#4d6599] dark:text-gray-400">
+<span class="material-symbols-outlined">visibility_off</span>
+</button>
+</div>
+<p class="text-red-500 text-sm mt-1">Passwords do not match.</p>
+</label>
+</div>
+<div class="h-8"></div>
+<!-- CTA and Alternative Action -->
+<div class="flex flex-col gap-4 px-4 pb-8">
+<button class="flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg h-14 bg-primary text-white gap-2 text-base font-bold leading-normal tracking-[0.015em] min-w-0 px-6">Create student account</button>
+<p class="text-center text-sm font-normal text-[#4d6599] dark:text-gray-400">
+                Already have an account? <a class="font-bold text-primary" href="#">Sign in</a>
+</p>
+</div>
+<!-- Social Auth (Optional) -->
+<div class="flex flex-col items-center gap-4 px-4 pb-12">
+<div class="relative flex w-full items-center justify-center">
+<div class="h-px w-full bg-gray-300 dark:bg-gray-700"></div>
+<p class="absolute bg-background-light dark:bg-background-dark px-2 text-sm text-[#4d6599] dark:text-gray-400">Or sign up with</p>
+</div>
+<div class="flex items-center gap-4 pt-2">
+<button class="flex size-14 items-center justify-center rounded-lg border border-gray-300 dark:border-gray-700 bg-background-light dark:bg-gray-800">
+<img class="h-6 w-6" data-alt="Google logo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDaMcl3hOkzTW7dFsOjuonkB-POFJQJ0YP5RmOHYunu8HIBTwLE42kTmdARa2bIz8MH_PtPTfdIQWfkP3J-ETnsh3m7UlKmt1zrkXsihTmHLOF8uOYyQfP_H6kaxo8rf-jfBgo5Z34PLkMKeYcSsMHBEvrjokl3iyQhu4zGz5x4kmRzj3NlxE2V1e-vXSWAJCKPkxckWlT1qNOmV0K9C8uYKOfhol8zpXqbLYa1quOUgf4AIUYWmEKWKI4TGzDCReYC_vUuMjtObwk5"/>
+</button>
+<button class="flex size-14 items-center justify-center rounded-lg border border-gray-300 dark:border-gray-700 bg-background-light dark:bg-gray-800">
+<img class="h-6 w-6" data-alt="Apple logo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBVCH-HE90JmO__KaC4_FOobn1lB-ke2Os69QaCARfiALlcWp0cE1SUYqXGyakHlwjpBQVDNjlNo5NhAweDLY_7ll496wKFVR4QF1sFFjdKA7DQ_WfF_Hihc7KX9Xtg6HB8DUMpSrLoa3gKkdqloyX3-8sViND27v_1dWHcbkzxZOlwOAdah-vTTXb6tzBRUTwYqguBh2jNaTdrFiqAlvixkHkFlxsneCsLahv0IigTVZJTDCQtUTyEtw2sU-XD0bbTHD_FBSph96p"/>
+</button>
+</div>
+</div>
+</div>
+</body></html>
