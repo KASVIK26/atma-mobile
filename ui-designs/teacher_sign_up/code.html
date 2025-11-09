@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Create Teacher Account - Atma Mobile</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2563EB",
+                        "accent": "#06B6D4",
+                        "success": "#10B981",
+                        "danger": "#EF4444",
+                        "warn": "#F59E0B",
+                        "background-light": "#F9FAFB",
+                        "background-dark": "#111827",
+                    },
+                    fontFamily: {
+                        "display": ["Lexend", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.75rem",
+                        "lg": "1rem",
+                        "xl": "1.5rem",
+                        "2xl": "2rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .form-select {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236B7281' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+            padding-right: 2.5rem;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-gray-800 dark:text-gray-200">
+<div class="relative flex h-auto min-h-screen w-full flex-col">
+<!-- Top App Bar -->
+<div class="flex items-center bg-background-light dark:bg-background-dark p-4 pb-2 justify-between sticky top-0 z-10">
+<div class="flex w-12 shrink-0 items-center justify-start">
+<span class="material-symbols-outlined text-gray-800 dark:text-gray-200 text-3xl">school</span>
+</div>
+<h2 class="text-gray-900 dark:text-white text-lg font-bold">Atma Mobile</h2>
+<div class="flex w-12 items-center justify-end">
+<button class="flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+<span class="material-symbols-outlined">person</span>
+</button>
+</div>
+</div>
+<main class="flex-1 px-4 pt-6 pb-8">
+<!-- Headline Text -->
+<h1 class="text-gray-900 dark:text-white text-3xl font-bold leading-tight tracking-tight text-left pb-6">Create Teacher Account</h1>
+<div class="space-y-6">
+<!-- Profile Image Upload -->
+<div class="flex flex-col items-center gap-2">
+<button class="relative flex h-24 w-24 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary dark:hover:border-primary transition-colors">
+<span class="material-symbols-outlined text-gray-400 dark:text-gray-500 text-4xl">add_a_photo</span>
+</button>
+<p class="text-sm font-medium text-gray-600 dark:text-gray-400">Upload Profile Image</p>
+</div>
+<!-- University Dropdown -->
+<div class="flex max-w-full flex-wrap items-end gap-4">
+<label class="flex flex-col min-w-40 flex-1">
+<p class="text-gray-700 dark:text-gray-300 text-sm font-medium leading-normal pb-2">University</p>
+<select class="form-select w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-gray-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:border-primary dark:focus:border-primary h-14 placeholder:text-gray-400 dark:placeholder:text-gray-500 px-4 text-base font-normal">
+<option value="">Select your university</option>
+<option value="one">Quantum University</option>
+<option value="two">Metropolis Institute of Technology</option>
+<option value="three">Starlight College of Arts</option>
+</select>
+</label>
+</div>
+<!-- Full Name Input -->
+<div class="flex max-w-full flex-wrap items-end gap-4">
+<label class="flex flex-col min-w-40 flex-1">
+<p class="text-gray-700 dark:text-gray-300 text-sm font-medium leading-normal pb-2">Full Name</p>
+<input class="form-input w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-gray-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:border-primary dark:focus:border-primary h-14 placeholder:text-gray-400 dark:placeholder:text-gray-500 px-4 text-base font-normal" placeholder="Enter your full name" value=""/>
+</label>
+</div>
+<!-- Email Input -->
+<div class="flex max-w-full flex-wrap items-end gap-4">
+<label class="flex flex-col min-w-40 flex-1">
+<p class="text-gray-700 dark:text-gray-300 text-sm font-medium leading-normal pb-2">Email Address</p>
+<input class="form-input w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-gray-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:border-primary dark:focus:border-primary h-14 placeholder:text-gray-400 dark:placeholder:text-gray-500 px-4 text-base font-normal" placeholder="Enter your email address" type="email" value=""/>
+</label>
+</div>
+<!-- Create Password Input -->
+<div class="flex max-w-full flex-wrap items-end gap-4">
+<label class="flex flex-col min-w-40 flex-1">
+<p class="text-gray-700 dark:text-gray-300 text-sm font-medium leading-normal pb-2">Create Password</p>
+<div class="relative w-full">
+<input class="form-input w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-gray-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:border-primary dark:focus:border-primary h-14 placeholder:text-gray-400 dark:placeholder:text-gray-500 px-4 pr-12 text-base font-normal" placeholder="Enter a secure password" type="password" value=""/>
+<button class="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-500 dark:text-gray-400 hover:text-primary dark:hover:text-primary">
+<span class="material-symbols-outlined">visibility_off</span>
+</button>
+</div>
+</label>
+</div>
+<!-- Confirm Password Input -->
+<div class="flex max-w-full flex-wrap items-end gap-4">
+<label class="flex flex-col min-w-40 flex-1">
+<p class="text-gray-700 dark:text-gray-300 text-sm font-medium leading-normal pb-2">Confirm Password</p>
+<div class="relative w-full">
+<input class="form-input w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-gray-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-danger dark:border-danger bg-white dark:bg-gray-800 focus:border-danger dark:focus:border-danger h-14 placeholder:text-gray-400 dark:placeholder:text-gray-500 px-4 pr-12 text-base font-normal" placeholder="Re-enter your password" type="password" value=""/>
+<button class="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-500 dark:text-gray-400 hover:text-primary dark:hover:text-primary">
+<span class="material-symbols-outlined">visibility</span>
+</button>
+</div>
+<p class="text-danger text-xs pt-1">Passwords do not match.</p>
+</label>
+</div>
+</div>
+<!-- CTA Button -->
+<div class="mt-8">
+<button class="flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-xl h-14 bg-primary text-white gap-2 text-base font-bold leading-normal tracking-wide min-w-0 px-6 hover:opacity-90 transition-opacity">
+                    Create teacher account
+                </button>
+</div>
+<!-- Login Link -->
+<div class="mt-6 text-center">
+<a class="text-sm font-medium text-primary hover:underline" href="#">
+                    Already have an account? Log in
+                </a>
+</div>
+<!-- Divider -->
+<div class="relative flex items-center py-8">
+<div class="flex-grow border-t border-gray-200 dark:border-gray-700"></div>
+<span class="flex-shrink mx-4 text-sm text-gray-500 dark:text-gray-400">Or</span>
+<div class="flex-grow border-t border-gray-200 dark:border-gray-700"></div>
+</div>
+<!-- Social Auth -->
+<div class="space-y-4">
+<button class="flex w-full items-center justify-center overflow-hidden rounded-xl h-14 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 gap-3 text-base font-medium leading-normal tracking-wide min-w-0 px-6 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+<svg class="w-5 h-5" data-alt="Google logo icon" viewbox="0 0 48 48">
+<path d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z" fill="#FFC107"></path><path d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z" fill="#FF3D00"></path><path d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.222,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z" fill="#4CAF50"></path><path d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571l6.19,5.238C43.021,36.251,44,30.651,44,24C44,22.659,43.862,21.35,43.611,20.083z" fill="#1976D2"></path>
+</svg>
+<span>Sign up with Google</span>
+</button>
+</div>
+</main>
+</div>
+</body></html>

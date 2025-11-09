@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Welcome to Atma</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<style>
+      @keyframes bounce-in {
+        0% {
+          transform: scale(0.95);
+          opacity: 0.8;
+        }
+        50% {
+          transform: scale(1.02);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+      .animate-bounce-in {
+        animation: bounce-in 0.6s ease-out;
+      }
+    </style>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#2563EB",
+              "accent": "#06B6D4",
+              "background-light": "#F8FAFC",
+              "background-dark": "#0F172A", 
+              "text-light": "#1F2937",
+              "text-dark": "#E2E8F0",
+              "text-muted-light": "#64748B",
+              "text-muted-dark": "#94A3B8"
+            },
+            fontFamily: {
+              "display": ["Lexend", "sans-serif"]
+            },
+            borderRadius: {
+              "DEFAULT": "1rem",
+              "lg": "1.5rem",
+              "xl": "2rem", 
+              "2xl": "2.5rem",
+              "full": "9999px"
+            },
+          },
+        },
+      }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display">
+<div class="relative flex min-h-screen w-full flex-col items-center justify-between p-4 pt-12 sm:pt-16 pb-8 group/design-root overflow-x-hidden text-text-light dark:text-text-dark">
+<!-- Main Content Area -->
+<main class="flex w-full flex-col items-center text-center gap-4">
+<!-- Illustration -->
+<div class="w-full max-w-sm px-4">
+<div class="w-full bg-center bg-no-repeat bg-contain aspect-square" data-alt="A soft, friendly illustration of a diverse group of students and a teacher interacting in a modern academic setting." style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuAZDi1prdrjpiggxNMChT0lfs3MXt7hzptjvAUIu4sPCT9JUzjWuRxqjEJ9zcwcbjiI5NHYssQzrfypMRcRHqA5wR4Nbm0prvwcxBRES1f9DS2XjFingSeXw4WpY3jW9Dr4rs5j2VlRPq_i46i6OTcY0It1KaBtcfKjQ84BHA7_mVu7qyhjdabcNgaGCNUAtUALItb2uQyYS0vHAAL2f6v56ioTH6uxq5DhpqL0Le0BFuU5v6b84icTsWwA0uDqhDXVIZckYfoDQkCG");'></div>
+</div>
+<!-- Headline -->
+<h1 class="text-3xl font-bold tracking-tight md:text-4xl">Welcome to Atma</h1>
+<!-- Subtitle -->
+<p class="max-w-xs text-base font-normal leading-relaxed text-text-muted-light dark:text-text-muted-dark">Attendance, classes and profiles — effortless.</p>
+</main>
+<!-- Footer Area -->
+<footer class="flex w-full flex-col items-center gap-4 max-w-sm">
+<!-- Call to Action Button -->
+<div class="flex w-full px-4 py-3 justify-center">
+<button class="flex min-w-[84px] w-full max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-full h-14 px-6 bg-gradient-to-r from-primary to-accent text-white text-base font-bold leading-normal tracking-[0.015em] shadow-lg shadow-primary/30 transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] animate-bounce-in">
+<span class="truncate">Get started</span>
+</button>
+</div>
+<!-- Meta Text -->
+<p class="text-sm font-normal text-text-muted-light dark:text-text-muted-dark">By continuing, you agree to our <a class="underline hover:text-primary" href="#">Privacy &amp; Terms</a>.</p>
+</footer>
+</div>
+</body></html>

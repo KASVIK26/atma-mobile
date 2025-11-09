@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Atma Mobile - Teacher Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2563eb",
+                        "background-light": "#f8fafc",
+                        "background-dark": "#111621",
+                        "card-light": "#ffffff",
+                        "card-dark": "#1e293b",
+                        "text-light": "#1e293b",
+                        "text-dark": "#f8fafc",
+                        "text-secondary-light": "#64748b",
+                        "text-secondary-dark": "#94a3b8",
+                        "border-light": "#e2e8f0",
+                        "border-dark": "#334155",
+                        "accent": "#06B6D4",
+                        "success": "#10B981",
+                        "warn": "#F59E0B",
+                        "danger": "#EF4444",
+                    },
+                    fontFamily: {
+                        "display": ["Lexend", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "1rem",
+                        "lg": "1.5rem",
+                        "xl": "2rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings:
+            'FILL' 0,
+            'wght' 400,
+            'GRAD' 0,
+            'opsz' 24
+        }
+        /* Custom scrollbar for horizontal carousel */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none; /* IE and Edge */
+            scrollbar-width: none; /* Firefox */
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-text-light dark:text-text-dark">
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
+<!-- Top App Bar -->
+<div class="flex items-center bg-background-light dark:bg-background-dark p-4 justify-between sticky top-0 z-10">
+<div class="flex items-center gap-2">
+<div class="text-primary flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/20">
+<span class="material-symbols-outlined">school</span>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="flex max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-full h-10 w-10 bg-transparent text-text-light dark:text-text-dark gap-2 text-base font-bold leading-normal tracking-[0.015em] min-w-0 p-0">
+<span class="material-symbols-outlined">search</span>
+</button>
+<img class="h-10 w-10 rounded-full object-cover" data-alt="Teacher's profile avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuArFoh6rUDiRXVR47Sq96WVzkpwy84f35vt4w2Iha1KsGeUxk2uYEJQE_pcsVXD51vN0bOJkR8ZauZ-1CvfQvn7f1cgOsLq2PMPxeghfSOld556b3RzfvUOohFo4oHF0GQWyr5cgdmw8nAftZPHq8z6KR5mKz7WPQGpsVlddC0Fu44xookZZ5UFSzqX4BRWxCR_OFSUdrV81l_e3LOOJqRRffydpAiUP1SN5bLFzyaQKkxxYbCcSpMDYEwGDh65giEEiqcpExUk4t0_"/>
+</div>
+</div>
+<!-- Headline Text -->
+<div class="px-4 pt-4 pb-2">
+<h1 class="text-text-light dark:text-text-dark tracking-tight text-[32px] font-bold leading-tight">Good afternoon, Dr. Evans</h1>
+<p class="text-text-secondary-light dark:text-text-secondary-dark mt-1">Today is Monday, 23 October 2023</p>
+</div>
+<!-- Section Header: Your day at a glance -->
+<h3 class="text-text-light dark:text-text-dark text-lg font-bold leading-tight tracking-[-0.015em] px-4 pb-2 pt-6">Your day at a glance</h3>
+<!-- Stats -->
+<div class="flex flex-wrap gap-4 p-4">
+<div class="flex min-w-[158px] flex-1 flex-col gap-2 rounded-lg bg-card-light dark:bg-card-dark p-6 shadow-sm">
+<p class="text-text-secondary-light dark:text-text-secondary-dark text-base font-medium leading-normal">Total Classes</p>
+<p class="text-text-light dark:text-text-dark tracking-tight text-4xl font-bold leading-tight">5</p>
+</div>
+<div class="flex min-w-[158px] flex-1 flex-col gap-2 rounded-lg bg-card-light dark:bg-card-dark p-6 shadow-sm">
+<p class="text-text-secondary-light dark:text-text-secondary-dark text-base font-medium leading-normal">Completed Sessions</p>
+<p class="text-text-light dark:text-text-dark tracking-tight text-4xl font-bold leading-tight">2</p>
+</div>
+</div>
+<!-- Quick Actions -->
+<div class="grid grid-cols-3 gap-4 px-4 pt-4">
+<div class="flex flex-col items-center gap-2">
+<button class="flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-primary/20 text-primary">
+<span class="material-symbols-outlined !text-3xl">qr_code_scanner</span>
+</button>
+<h2 class="text-text-light dark:text-text-dark text-sm font-semibold text-center">Start Attendance</h2>
+</div>
+<div class="flex flex-col items-center gap-2">
+<button class="flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-primary/20 text-primary">
+<span class="material-symbols-outlined !text-3xl">event_available</span>
+</button>
+<h2 class="text-text-light dark:text-text-dark text-sm font-semibold text-center">My Classes</h2>
+</div>
+<div class="flex flex-col items-center gap-2">
+<button class="flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-primary/20 text-primary">
+<span class="material-symbols-outlined !text-3xl">add_circle</span>
+</button>
+<h2 class="text-text-light dark:text-text-dark text-sm font-semibold text-center">Create Class</h2>
+</div>
+</div>
+<!-- Section Header: Upcoming Classes -->
+<h3 class="text-text-light dark:text-text-dark text-lg font-bold leading-tight tracking-[-0.015em] px-4 pb-2 pt-8">Upcoming classes</h3>
+<!-- Upcoming Classes Carousel -->
+<div class="relative w-full">
+<div class="flex gap-4 overflow-x-auto p-4 no-scrollbar">
+<!-- Upcoming Class Card 1 -->
+<div class="flex w-64 shrink-0 flex-col gap-4 rounded-lg bg-primary p-5 text-white shadow-sm">
+<div class="flex items-center justify-between">
+<p class="text-lg font-bold">02:00 PM</p>
+<div class="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
+<span class="material-symbols-outlined text-base">arrow_forward</span>
+</div>
+</div>
+<div>
+<p class="text-base font-semibold">CS-301</p>
+<p class="text-sm opacity-80">Software Engineering</p>
+</div>
+<div class="flex items-center gap-2 pt-2">
+<span class="material-symbols-outlined text-base opacity-80">location_on</span>
+<p class="text-sm opacity-80">Room 404B</p>
+</div>
+</div>
+<!-- Upcoming Class Card 2 -->
+<div class="flex w-64 shrink-0 flex-col gap-4 rounded-lg bg-card-light dark:bg-card-dark p-5 shadow-sm">
+<div class="flex items-center justify-between">
+<p class="text-lg font-bold text-text-light dark:text-text-dark">04:00 PM</p>
+<div class="flex h-8 w-8 items-center justify-center rounded-full bg-background-light dark:bg-background-dark">
+<span class="material-symbols-outlined text-base text-text-secondary-light dark:text-text-secondary-dark">arrow_forward</span>
+</div>
+</div>
+<div>
+<p class="text-base font-semibold text-text-light dark:text-text-dark">DS-212</p>
+<p class="text-sm text-text-secondary-light dark:text-text-secondary-dark">Data Structures</p>
+</div>
+<div class="flex items-center gap-2 pt-2">
+<span class="material-symbols-outlined text-base text-text-secondary-light dark:text-text-secondary-dark">location_on</span>
+<p class="text-sm text-text-secondary-light dark:text-text-secondary-dark">Hall A</p>
+</div>
+</div>
+<!-- Upcoming Class Card 3 -->
+<div class="flex w-64 shrink-0 flex-col gap-4 rounded-lg bg-card-light dark:bg-card-dark p-5 shadow-sm">
+<div class="flex items-center justify-between">
+<p class="text-lg font-bold text-text-light dark:text-text-dark">05:30 PM</p>
+<div class="flex h-8 w-8 items-center justify-center rounded-full bg-background-light dark:bg-background-dark">
+<span class="material-symbols-outlined text-base text-text-secondary-light dark:text-text-secondary-dark">arrow_forward</span>
+</div>
+</div>
+<div>
+<p class="text-base font-semibold text-text-light dark:text-text-dark">AI-401</p>
+<p class="text-sm text-text-secondary-light dark:text-text-secondary-dark">Intro to Artificial Intelligence</p>
+</div>
+<div class="flex items-center gap-2 pt-2">
+<span class="material-symbols-outlined text-base text-text-secondary-light dark:text-text-secondary-dark">location_on</span>
+<p class="text-sm text-text-secondary-light dark:text-text-secondary-dark">Room 201C</p>
+</div>
+</div>
+</div>
+</div>
+<div class="h-8"></div> <!-- Spacer at the bottom -->
+</div>
+</body></html>

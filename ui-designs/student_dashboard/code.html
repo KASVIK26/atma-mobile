@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Atma Mobile Dashboard</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#2563EB",
+              "background-light": "#f8fafc",
+              "background-dark": "#111827",
+              "accent": "#06B6D4",
+              "success": "#10B981",
+              "warn": "#F59E0B",
+              "danger": "#EF4444",
+              "text-light": "#1f2937",
+              "text-dark": "#f3f4f6"
+            },
+            fontFamily: {
+              "display": ["Lexend", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "1.5rem", "xl": "2rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .hide-scrollbar {
+        -ms-overflow-style: none;  
+        scrollbar-width: none;  
+      }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-text-light dark:text-text-dark">
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
+<!-- Top App Bar -->
+<div class="flex items-center bg-background-light dark:bg-background-dark p-4 justify-between sticky top-0 z-10">
+<div class="flex size-10 shrink-0 items-center justify-center" data-icon="UniversityLogo" data-size="24px" data-weight="regular">
+<svg class="text-primary" fill="none" height="28" viewbox="0 0 24 24" width="28" xmlns="http://www.w3.org/2000/svg">
+<path d="M4 10V16H6V12H8V16H10V10C10 8.89543 9.10457 8 8 8H6C4.89543 8 4 8.89543 4 10ZM12 8L14.5 16L17 8L19.5 16L22 8" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+<path d="M4 19L15.029 3.97104C15.9381 3.06191 17.4339 3.06191 18.343 3.97104L20.029 5.65699C20.9381 6.56612 20.9381 8.06191 20.029 8.97104L9 20L4 19Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</div>
+<div class="flex items-center justify-center">
+<span class="material-symbols-outlined text-2xl text-text-light/80 dark:text-text-dark/80">search</span>
+</div>
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-10 shrink-0" data-alt="User profile avatar" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCibO29qR7DqjE89AjDeMpNf2ivKkBfkHBdoZBbvjR7cz7mXce5b2smLD5IyAr2s_k9W1rDGgTisIdhDPkg2AQGnRC0_zdC_gdsjGskZmiMkdLJ4I3WfT79Z_NWmUrvUHCGT3uCszgc_dfW01FyPj30B_i7rqhVcw0Id5vOFpCrj_9NxgCjWhWGuEdUIL_JBvVv4dGuata9hRWW5t1SUToVnIRAQVpn9_5ObMKmaCV5KAj9U358Mo2Egj2c4ylmBZ-e2lbxoXNgWSiC");'></div>
+</div>
+<!-- Greeting Card -->
+<div class="px-4 pt-4 pb-2">
+<div class="flex flex-col gap-4 rounded-xl bg-white dark:bg-slate-800 p-5 shadow-[0_4px_12px_rgba(0,0,0,0.05)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
+<h1 class="text-text-light dark:text-text-dark tracking-tight text-[32px] font-bold leading-tight">Good afternoon, Alex</h1>
+<div class="flex flex-col gap-2">
+<div class="flex justify-between">
+<p class="text-text-light/90 dark:text-text-dark/90 text-sm font-medium leading-normal">Weekly Attendance</p>
+<p class="text-primary text-sm font-bold leading-normal">85%</p>
+</div>
+<div class="h-2 rounded-full bg-slate-200 dark:bg-slate-700">
+<div class="h-2 rounded-full bg-primary" style="width: 85%;"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Quick Actions -->
+<div class="grid grid-cols-3 gap-4 px-4 pt-6 pb-2">
+<div class="flex flex-col items-center gap-2">
+<button class="flex size-16 items-center justify-center rounded-full bg-primary/10 dark:bg-primary/20 text-primary">
+<span class="material-symbols-outlined text-3xl">qr_code_scanner</span>
+</button>
+<p class="text-sm font-medium text-center text-text-light/90 dark:text-text-dark/90">Mark Attendance</p>
+</div>
+<div class="flex flex-col items-center gap-2">
+<button class="flex size-16 items-center justify-center rounded-full bg-primary/10 dark:bg-primary/20 text-primary">
+<span class="material-symbols-outlined text-3xl">school</span>
+</button>
+<p class="text-sm font-medium text-center text-text-light/90 dark:text-text-dark/90">My Classes</p>
+</div>
+<div class="flex flex-col items-center gap-2">
+<button class="flex size-16 items-center justify-center rounded-full bg-primary/10 dark:bg-primary/20 text-primary">
+<span class="material-symbols-outlined text-3xl">calendar_month</span>
+</button>
+<p class="text-sm font-medium text-center text-text-light/90 dark:text-text-dark/90">View Schedule</p>
+</div>
+</div>
+<!-- Upcoming Today Section -->
+<div class="pt-8">
+<h2 class="text-text-light dark:text-text-dark text-xl font-bold leading-tight tracking-tight px-4 pb-3">Upcoming Today</h2>
+<div class="flex gap-3 overflow-x-auto px-4 pb-4 hide-scrollbar">
+<div class="flex w-64 shrink-0 flex-col gap-3 rounded-lg bg-white dark:bg-slate-800 p-4 shadow-[0_4px_12px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.15)]">
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<p class="text-sm font-medium text-text-light/60 dark:text-text-dark/60">1:00 PM - 2:30 PM</p>
+<p class="text-lg font-bold text-text-light dark:text-text-dark">CS-101</p>
+</div>
+<div class="flex h-10 w-10 items-center justify-center rounded-full bg-accent/10 dark:bg-accent/20 text-accent">
+<span class="material-symbols-outlined text-xl">code</span>
+</div>
+</div>
+<p class="text-sm font-medium text-text-light/80 dark:text-text-dark/80">Dr. Alan Turing</p>
+</div>
+<div class="flex w-64 shrink-0 flex-col gap-3 rounded-lg bg-white dark:bg-slate-800 p-4 shadow-[0_4px_12px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.15)]">
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<p class="text-sm font-medium text-text-light/60 dark:text-text-dark/60">3:00 PM - 4:00 PM</p>
+<p class="text-lg font-bold text-text-light dark:text-text-dark">MA-204</p>
+</div>
+<div class="flex h-10 w-10 items-center justify-center rounded-full bg-danger/10 dark:bg-danger/20 text-danger">
+<span class="material-symbols-outlined text-xl">calculate</span>
+</div>
+</div>
+<p class="text-sm font-medium text-text-light/80 dark:text-text-dark/80">Dr. Ada Lovelace</p>
+</div>
+<div class="flex w-64 shrink-0 flex-col gap-3 rounded-lg bg-white dark:bg-slate-800 p-4 shadow-[0_4px_12px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.15)]">
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<p class="text-sm font-medium text-text-light/60 dark:text-text-dark/60">4:00 PM - 5:30 PM</p>
+<p class="text-lg font-bold text-text-light dark:text-text-dark">PH-110</p>
+</div>
+<div class="flex h-10 w-10 items-center justify-center rounded-full bg-warn/10 dark:bg-warn/20 text-warn">
+<span class="material-symbols-outlined text-xl">science</span>
+</div>
+</div>
+<p class="text-sm font-medium text-text-light/80 dark:text-text-dark/80">Dr. Marie Curie</p>
+</div>
+</div>
+</div>
+<!-- Statistics Grid -->
+<div class="pt-6 pb-8">
+<h2 class="text-text-light dark:text-text-dark text-xl font-bold leading-tight tracking-tight px-4 pb-3">Your Week at a Glance</h2>
+<div class="grid grid-cols-2 gap-4 px-4">
+<div class="flex flex-col gap-2 rounded-lg bg-white dark:bg-slate-800 p-4 shadow-[0_4px_12px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.15)]">
+<div class="flex size-10 items-center justify-center rounded-full bg-success/10 dark:bg-success/20 text-success">
+<span class="material-symbols-outlined">event_available</span>
+</div>
+<p class="text-3xl font-bold text-text-light dark:text-text-dark">12</p>
+<p class="text-sm font-medium text-text-light/70 dark:text-text-dark/70">Total Classes</p>
+</div>
+<div class="flex flex-col gap-2 rounded-lg bg-white dark:bg-slate-800 p-4 shadow-[0_4px_12px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.15)]">
+<div class="flex size-10 items-center justify-center rounded-full bg-primary/10 dark:bg-primary/20 text-primary">
+<span class="material-symbols-outlined">trending_up</span>
+</div>
+<p class="text-3xl font-bold text-text-light dark:text-text-dark">4</p>
+<p class="text-sm font-medium text-text-light/70 dark:text-text-dark/70">Attendance Streak</p>
+</div>
+<div class="flex flex-col gap-2 rounded-lg bg-white dark:bg-slate-800 p-4 shadow-[0_4px_12px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.15)] col-span-2">
+<div class="flex size-10 items-center justify-center rounded-full bg-warn/10 dark:bg-warn/20 text-warn">
+<span class="material-symbols-outlined">hourglass_top</span>
+</div>
+<p class="text-3xl font-bold text-text-light dark:text-text-dark">2</p>
+<p class="text-sm font-medium text-text-light/70 dark:text-text-dark/70">Absence Requests</p>
+</div>
+</div>
+</div>
+</div>
+</body></html>
