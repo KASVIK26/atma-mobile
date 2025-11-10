@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Atma Mobile - Classes</title>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2563EB",
+                        "accent": "#06B6D4",
+                        "success": "#10B981",
+                        "warn": "#F59E0B",
+                        "danger": "#EF4444",
+                        "background-light": "#F8FAFC",
+                        "background-dark": "#111621",
+                        "text-light-primary": "#1E293B",
+                        "text-dark-primary": "#F1F5F9",
+                        "text-light-secondary": "#64748B",
+                        "text-dark-secondary": "#94A3B8",
+                        "card-light": "rgba(255, 255, 255, 0.8)",
+                        "card-dark": "rgba(30, 41, 59, 0.5)",
+                        "border-light": "#E2E8F0",
+                        "border-dark": "#334155"
+                    },
+                    fontFamily: {
+                        "display": ["Lexend", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "2xl": "1rem",
+                        "full": "9999px"
+                    },
+                    boxShadow: {
+                        'subtle': '0 4px 12px 0 rgba(0, 0, 0, 0.05)',
+                        'elevated': '0 8px 30px rgba(0, 0, 0, 0.08)'
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-text-light-primary dark:text-text-dark-primary">
+<div class="flex flex-col h-screen justify-between">
+<main class="flex-grow overflow-y-auto pb-24">
+<header class="sticky top-0 z-10 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm">
+<div class="flex items-center p-4">
+<div class="flex size-10 shrink-0 items-center justify-center text-primary">
+<span class="material-symbols-outlined text-3xl">school</span>
+</div>
+<h1 class="text-lg font-bold flex-1 ml-2 text-text-light-primary dark:text-text-dark-primary">Atma Mobile</h1>
+<button class="flex items-center justify-center h-10 w-10">
+<img alt="User profile avatar" class="h-8 w-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBRcHY3GR0qbQZ4a73fmYXHINbFzxnsTFbOJ3_pPRQlBoqUfgEaN6CriAs8guu0xgo9UN1uOmHJx_gUDNcb5ioth4WpaCdKrjIEsbkxA-QP5Dupg5TThnmcNE-WvtToMEKYPIejXfs8b6EzpaQ4zJYgIIxvpIw1H8RCeIVSiXpaV4V4EPr3lGh2QNAHPI2cZk0jtdY1gF_3UxfsJganScpMi2BbKi55PuOLhZ-V6KxM9Ge_JbBDgUvWFJgXNKmVLmnyJpOIIQU_OPK7"/>
+</button>
+</div>
+</header>
+<div class="px-4 pt-4 pb-2">
+<h2 class="text-3xl font-bold tracking-tight text-text-light-primary dark:text-text-dark-primary">Classes</h2>
+<p class="text-base text-text-light-secondary dark:text-text-dark-secondary mt-1">Your scheduled classes — tap a class for details.</p>
+</div>
+<div class="px-4 pt-6 pb-8">
+<div class="grid grid-cols-[auto,1fr] gap-x-4">
+<div class="flex flex-col items-center">
+<p class="text-sm font-medium text-text-light-secondary dark:text-text-dark-secondary">9:00 AM</p>
+<div class="relative mt-2">
+<div class="h-4 w-4 rounded-full bg-primary ring-4 ring-background-light dark:ring-background-dark"></div>
+<div class="absolute top-full left-1/2 w-0.5 h-[168px] bg-border-light dark:bg-border-dark -translate-x-1/2"></div>
+</div>
+</div>
+<div class="pb-8">
+<div class="bg-card-light dark:bg-card-dark backdrop-blur-md rounded-2xl shadow-elevated border border-border-light dark:border-border-dark p-4">
+<div class="flex-1">
+<div class="flex justify-between items-start mb-2">
+<h3 class="text-xl font-semibold text-text-light-primary dark:text-text-dark-primary pr-2">Introduction to Psychology</h3>
+<div class="text-xs font-medium bg-primary/10 text-primary px-2 py-1 rounded-full whitespace-nowrap">90 min</div>
+</div>
+<p class="text-md font-medium text-text-light-secondary dark:text-text-dark-secondary">PSY-101 • Room 304</p>
+<p class="text-md font-medium text-text-light-secondary dark:text-text-dark-secondary mt-1">Prof. Ada Lovelace</p>
+<div class="flex items-center gap-2 mt-4">
+<div class="h-2 w-2 rounded-full bg-success"></div>
+<span class="text-sm font-medium text-success">On-time</span>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col items-center">
+<p class="text-sm font-medium text-text-light-secondary dark:text-text-dark-secondary">11:00 AM</p>
+<div class="relative mt-2">
+<div class="h-4 w-4 rounded-full bg-primary ring-4 ring-background-light dark:ring-background-dark"></div>
+<div class="absolute top-full left-1/2 w-0.5 h-[168px] bg-border-light dark:bg-border-dark -translate-x-1/2"></div>
+</div>
+</div>
+<div class="pb-8">
+<div class="bg-card-light dark:bg-card-dark backdrop-blur-md rounded-2xl shadow-elevated border border-border-light dark:border-border-dark p-4">
+<div class="flex-1">
+<div class="flex justify-between items-start mb-2">
+<h3 class="text-xl font-semibold text-text-light-primary dark:text-text-dark-primary pr-2">Advanced Algorithms</h3>
+<div class="text-xs font-medium bg-primary/10 text-primary px-2 py-1 rounded-full whitespace-nowrap">50 min</div>
+</div>
+<p class="text-md font-medium text-text-light-secondary dark:text-text-dark-secondary">CS-301 • Room 112</p>
+<p class="text-md font-medium text-text-light-secondary dark:text-text-dark-secondary mt-1">Prof. Alan Turing</p>
+<div class="flex items-center gap-2 mt-4">
+<div class="h-2 w-2 rounded-full bg-danger"></div>
+<span class="text-sm font-medium text-danger">Cancelled</span>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col items-center">
+<p class="text-sm font-medium text-text-light-secondary dark:text-text-dark-secondary">12:00 PM</p>
+<div class="relative mt-2">
+<div class="h-4 w-4 rounded-full bg-border-light dark:bg-border-dark ring-4 ring-background-light dark:ring-background-dark"></div>
+</div>
+</div>
+<div></div>
+</div>
+</div>
+</main>
+<footer class="fixed bottom-0 left-0 right-0 z-10">
+<div class="bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm border-t border-border-light dark:border-border-dark px-4 pb-3 pt-2 flex justify-around">
+<a class="flex flex-1 flex-col items-center justify-end gap-1 text-text-light-secondary dark:text-text-dark-secondary" href="#">
+<div class="flex h-8 items-center justify-center">
+<span class="material-symbols-outlined">home</span>
+</div>
+<p class="text-xs font-medium">Home</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-end gap-1 text-primary" href="#">
+<div class="flex h-8 items-center justify-center">
+<span class="material-symbols-outlined font-bold">calendar_month</span>
+</div>
+<p class="text-xs font-bold">Classes</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-end gap-1 text-text-light-secondary dark:text-text-dark-secondary" href="#">
+<div class="flex h-8 items-center justify-center">
+<span class="material-symbols-outlined">person</span>
+</div>
+<p class="text-xs font-medium">Profile</p>
+</a>
+</div>
+</footer>
+</div>
+
+</body></html>

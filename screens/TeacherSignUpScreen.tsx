@@ -425,7 +425,7 @@ export default function TeacherSignUpScreen() {
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
-      router.push('/teacher-dashboard');
+      router.push('/(main)/home' as any);
     }, 1000);
   };
 

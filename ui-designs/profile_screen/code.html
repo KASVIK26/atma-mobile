@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Profile - Atma Mobile</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings:
+        'FILL' 0,
+        'wght' 400,
+        'GRAD' 0,
+        'opsz' 24
+      }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#2563EB",
+              "background-light": "#f8fafc",
+              "background-dark": "#111621",
+              "card-light": "#ffffff",
+              "card-dark": "#1e293b",
+              "text-light-primary": "#1f2937",
+              "text-dark-primary": "#f8fafc",
+              "text-light-secondary": "#64748b",
+              "text-dark-secondary": "#94a3b8",
+              "danger": "#EF4444"
+            },
+            fontFamily: {
+              "display": ["Lexend", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "2xl": "1rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-text-light-primary dark:text-text-dark-primary">
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
+<!-- Top App Bar -->
+<div class="flex items-center bg-background-light dark:bg-background-dark p-4 pb-2 justify-between sticky top-0 z-10">
+<div class="text-primary flex size-10 shrink-0 items-center justify-center" data-icon="Chalkboard">
+<span class="material-symbols-outlined text-3xl">school</span>
+</div>
+<h1 class="text-text-light-primary dark:text-text-dark-primary text-lg font-bold leading-tight tracking-[-0.015em] flex-1">Atma Mobile</h1>
+<div class="flex w-10 items-center justify-end">
+<img class="size-10 rounded-full object-cover" data-alt="User's profile avatar thumbnail" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAy6GbFI8dcPgc6Zp3LlmTsEQQoyCcottI-gRfddNQ2R0_GZjUM3B3X3InjKmapXVycWT5h5GihQw4AyjlqWPvz7gbJeC4V_tixLrS_AjSr5AmnbE2ZBa43_HsWSNArIKmuFG_8PnhSCLJHnE45WT3IMsRZQPqWCAi6W73wEKq4jqWBE1QnRz1KRYKS-ttA0AZ0uV4NBkpDx9lWo63Rq2wT6s_bJt_0eEAE-uz7jv_lvbeo4ruROrVbbcjJBhEVzgYbRzkNOsHdeQO5"/>
+</div>
+</div>
+<!-- Main Content -->
+<main class="flex-grow px-4 pt-4 pb-28">
+<!-- Profile Card -->
+<div class="flex w-full flex-col items-center gap-4 rounded-2xl bg-card-light dark:bg-card-dark p-6 shadow-sm">
+<div class="relative">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full min-h-32 w-32" data-alt="Large user profile avatar" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuC4yhDmcoWBfJZjre92INShL3L5yJMy4kKLZouyHkSLzHzZeKXJz0XbbpqcAprY-urIPDR8Q93fFgmTZHI6ItWhBwTkFpHRkR4rnK8RaOL6GNHTdb5TkfaR4sduvKvrg5GC2wwqUn7aAfQeaCS5pnb79Xo4jMR45kCYdh4pajArRmNIFaliVZIUXTdnHTnudnTN-aa4ZoOkt46ocBzhgRCI5QdPdr31gIgwfnC2DaVUT6xEymB0W9fpNIU5rNtN-cApOR7HIAmeMrmW");'></div>
+</div>
+<div class="flex flex-col items-center justify-center gap-1">
+<p class="text-text-light-primary dark:text-text-dark-primary text-[22px] font-bold leading-tight tracking-[-0.015em] text-center">Jordan Smith</p>
+<p class="text-text-light-secondary dark:text-text-dark-secondary text-base font-normal leading-normal text-center">j.smith@university.edu</p>
+<p class="text-text-light-secondary dark:text-text-dark-secondary text-base font-normal leading-normal text-center">Quantum University</p>
+</div>
+<div class="flex h-8 shrink-0 items-center justify-center gap-x-2 rounded-full bg-primary/10 px-4">
+<p class="text-primary text-sm font-medium leading-normal">Student</p>
+</div>
+</div>
+<!-- Account Section -->
+<div class="mt-8">
+<h3 class="text-text-light-primary dark:text-text-dark-primary text-lg font-bold leading-tight tracking-[-0.015em] px-2 pb-2">Account</h3>
+<div class="flex flex-col overflow-hidden rounded-2xl bg-card-light dark:bg-card-dark shadow-sm">
+<div class="flex items-center gap-4 px-4 min-h-16 justify-between border-b border-slate-100 dark:border-slate-700">
+<div class="flex items-center gap-4">
+<div class="text-text-light-secondary dark:text-text-dark-secondary flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700 shrink-0 size-10">
+<span class="material-symbols-outlined">add_a_photo</span>
+</div>
+<p class="text-text-light-primary dark:text-text-dark-primary text-base font-normal leading-normal flex-1 truncate">Change Avatar</p>
+</div>
+<div class="shrink-0 text-text-light-secondary dark:text-text-dark-secondary">
+<span class="material-symbols-outlined">chevron_right</span>
+</div>
+</div>
+<div class="flex items-center gap-4 px-4 min-h-16 justify-between border-b border-slate-100 dark:border-slate-700">
+<div class="flex items-center gap-4">
+<div class="text-text-light-secondary dark:text-text-dark-secondary flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700 shrink-0 size-10">
+<span class="material-symbols-outlined">badge</span>
+</div>
+<p class="text-text-light-primary dark:text-text-dark-primary text-base font-normal leading-normal flex-1 truncate">Update Name</p>
+</div>
+<div class="shrink-0 text-text-light-secondary dark:text-text-dark-secondary">
+<span class="material-symbols-outlined">chevron_right</span>
+</div>
+</div>
+<div class="flex items-center gap-4 px-4 min-h-16 justify-between border-b border-slate-100 dark:border-slate-700">
+<div class="flex items-center gap-4">
+<div class="text-text-light-secondary dark:text-text-dark-secondary flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700 shrink-0 size-10">
+<span class="material-symbols-outlined">lock_reset</span>
+</div>
+<p class="text-text-light-primary dark:text-text-dark-primary text-base font-normal leading-normal flex-1 truncate">Change Password</p>
+</div>
+<div class="shrink-0 text-text-light-secondary dark:text-text-dark-secondary">
+<span class="material-symbols-outlined">chevron_right</span>
+</div>
+</div>
+<div class="flex items-center gap-4 px-4 min-h-16 justify-between">
+<div class="flex items-center gap-4">
+<div class="text-text-light-secondary dark:text-text-dark-secondary flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700 shrink-0 size-10">
+<span class="material-symbols-outlined">link</span>
+</div>
+<p class="text-text-light-primary dark:text-text-dark-primary text-base font-normal leading-normal flex-1 truncate">Link University</p>
+</div>
+<div class="shrink-0 text-text-light-secondary dark:text-text-dark-secondary">
+<span class="material-symbols-outlined">chevron_right</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Settings Section -->
+<div class="mt-8">
+<h3 class="text-text-light-primary dark:text-text-dark-primary text-lg font-bold leading-tight tracking-[-0.015em] px-2 pb-2">Settings</h3>
+<div class="flex flex-col overflow-hidden rounded-2xl bg-card-light dark:bg-card-dark shadow-sm">
+<div class="flex items-center gap-4 px-4 min-h-16 justify-between border-b border-slate-100 dark:border-slate-700">
+<div class="flex items-center gap-4">
+<div class="text-text-light-secondary dark:text-text-dark-secondary flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700 shrink-0 size-10">
+<span class="material-symbols-outlined">dark_mode</span>
+</div>
+<p class="text-text-light-primary dark:text-text-dark-primary text-base font-normal leading-normal flex-1 truncate">App Theme</p>
+</div>
+<div class="shrink-0">
+<div class="relative inline-flex h-6 w-11 cursor-pointer items-center rounded-full bg-slate-200 dark:bg-slate-600">
+<span class="inline-block h-4 w-4 transform rounded-full bg-white dark:bg-slate-300 transition translate-x-1 dark:translate-x-6"></span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-4 px-4 min-h-16 justify-between border-b border-slate-100 dark:border-slate-700">
+<div class="flex items-center gap-4">
+<div class="text-text-light-secondary dark:text-text-dark-secondary flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700 shrink-0 size-10">
+<span class="material-symbols-outlined">notifications</span>
+</div>
+<p class="text-text-light-primary dark:text-text-dark-primary text-base font-normal leading-normal flex-1 truncate">Notifications</p>
+</div>
+<div class="shrink-0 text-text-light-secondary dark:text-text-dark-secondary">
+<span class="material-symbols-outlined">chevron_right</span>
+</div>
+</div>
+<div class="flex items-center gap-4 px-4 min-h-16 justify-between border-b border-slate-100 dark:border-slate-700">
+<div class="flex items-center gap-4">
+<div class="text-text-light-secondary dark:text-text-dark-secondary flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700 shrink-0 size-10">
+<span class="material-symbols-outlined">privacy_tip</span>
+</div>
+<p class="text-text-light-primary dark:text-text-dark-primary text-base font-normal leading-normal flex-1 truncate">Privacy Policy</p>
+</div>
+<div class="shrink-0 text-text-light-secondary dark:text-text-dark-secondary">
+<span class="material-symbols-outlined">chevron_right</span>
+</div>
+</div>
+<div class="flex items-center gap-4 px-4 min-h-16 justify-between">
+<div class="flex items-center gap-4">
+<div class="text-text-light-secondary dark:text-text-dark-secondary flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700 shrink-0 size-10">
+<span class="material-symbols-outlined">help</span>
+</div>
+<p class="text-text-light-primary dark:text-text-dark-primary text-base font-normal leading-normal flex-1 truncate">Help &amp; Support</p>
+</div>
+<div class="shrink-0 text-text-light-secondary dark:text-text-dark-secondary">
+<span class="material-symbols-outlined">chevron_right</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Logout Button -->
+<div class="mt-8">
+<button class="flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl h-14 bg-danger text-white gap-2 text-base font-bold leading-normal tracking-[0.015em]">
+                    Logout
+                </button>
+</div>
+</main>
+<!-- Bottom Navigation -->
+<div class="fixed bottom-0 left-0 right-0 h-20 bg-card-light dark:bg-card-dark border-t border-slate-100 dark:border-slate-700 shadow-[0_-1px_3px_rgba(0,0,0,0.03)]">
+<div class="flex h-full justify-around items-center px-2">
+<a class="flex flex-col items-center justify-center text-text-light-secondary dark:text-text-dark-secondary text-sm font-medium gap-1 w-20" href="#">
+<span class="material-symbols-outlined">home</span>
+<span>Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-text-light-secondary dark:text-text-dark-secondary text-sm font-medium gap-1 w-20" href="#">
+<span class="material-symbols-outlined">calendar_month</span>
+<span>Schedule</span>
+</a>
+<a class="flex flex-col items-center justify-center text-text-light-secondary dark:text-text-dark-secondary text-sm font-medium gap-1 w-20" href="#">
+<span class="material-symbols-outlined">history</span>
+<span>History</span>
+</a>
+<a class="flex flex-col items-center justify-center text-primary text-sm font-bold gap-1 w-20" href="#">
+<span class="material-symbols-outlined">person</span>
+<span>Profile</span>
+</a>
+</div>
+</div>
+</div>
+</body></html>

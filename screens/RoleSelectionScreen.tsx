@@ -1,4 +1,5 @@
 import { useTheme } from '@/context/ThemeContext';
+import { useUser } from '@/context/UserContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo } from 'react';
@@ -183,6 +184,7 @@ export const RoleSelectionScreen = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, theme } = useTheme();
+  const { setUserRole } = useUser();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   useEffect(() => {
@@ -232,7 +234,10 @@ export const RoleSelectionScreen = () => {
               'Mark your attendance',
               'Track your progress',
             ]}
-            onPress={() => router.push('/(auth)/student-signup')}
+            onPress={() => {
+              setUserRole('student');
+              router.push('/(main)/home' as any);
+            }}
             colors={colors}
           />
 
@@ -244,7 +249,10 @@ export const RoleSelectionScreen = () => {
               'Take student attendance',
               'View attendance reports',
             ]}
-            onPress={() => router.push('/(auth)/teacher-signup')}
+            onPress={() => {
+              setUserRole('teacher');
+              router.push('/(main)/home' as any);
+            }}
             colors={colors}
           />
         </View>

@@ -3,21 +3,21 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 import Animated, {
-  FadeInDown,
-  FadeInUp,
+    FadeInDown,
+    FadeInUp,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -375,7 +375,7 @@ export default function StudentSignUpScreen() {
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
-      router.push('/student-dashboard');
+      router.push('/(main)/home' as any);
     }, 1000);
   };
 

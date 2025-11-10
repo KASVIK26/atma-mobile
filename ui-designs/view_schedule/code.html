@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Atma Mobile - My Schedule</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2563EB",
+                        "accent": "#06B6D4",
+                        "success": "#10B981",
+                        "warn": "#F59E0B",
+                        "danger": "#EF4444",
+                        "background-light": "#F8FAFC",
+                        "background-dark": "#1E293B",
+                    },
+                    fontFamily: {
+                        "display": ["Lexend", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.5rem",
+                        "lg": "1rem",
+                        "xl": "1.5rem",
+                        "2xl": "2rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 1,
+            'wght' 400,
+            'GRAD' 0,
+            'opsz' 24
+        }
+    </style>
+<style>
+        body {
+            min-height: max(884px, 100dvh);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="font-display bg-background-light">
+<div class="relative flex min-h-screen w-full flex-col">
+<header class="sticky top-0 z-10 flex h-16 items-center justify-between bg-background-light/80 px-4 backdrop-blur-sm">
+<button class="flex h-10 w-10 items-center justify-center">
+<span class="material-symbols-outlined text-3xl text-slate-800">arrow_back_ios_new</span>
+</button>
+<h1 class="text-lg font-bold text-slate-900">My Schedule</h1>
+<div class="flex h-10 w-10 items-center justify-center">
+<img alt="User profile avatar" class="h-8 w-8 rounded-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAMAKXdZzE3DDdgyzSxBQMBLxUJvUFwYU_77b_LzeQhwApy7yVwP9ge8wQPOyf2zdU87LRDV5MTvzjMvAGbyhvrZut8f7AUnogoqX0VlAIfFNVpZnuALtf6AWZmj8vthP4AfIUq47KWUXM4WKChrTZLuPFNn2_kxA4cIB3m3G6KkKe3PgDVmf40EPDZ4jg82QqlYZFWh5u247Rx8D0RbhISNtbZckxOIlX3ryYCiyDgMOYvZtdpmmR16VYTW9y4CtJpSFl_Bj4C4QGf"/>
+</div>
+</header>
+<main class="flex-1 pb-4">
+<div class="px-4 py-3">
+<div class="flex h-12 flex-1 items-center justify-center rounded-2xl bg-slate-100 p-1">
+<label class="flex h-full flex-1 cursor-pointer items-center justify-center rounded-xl px-2 text-sm font-medium leading-normal text-slate-600 has-[:checked]:bg-white has-[:checked]:text-primary has-[:checked]:shadow-md">
+<span class="truncate">Daily</span>
+<input checked="" class="invisible w-0" name="view-toggle" type="radio" value="Daily"/>
+</label>
+<label class="flex h-full flex-1 cursor-pointer items-center justify-center rounded-xl px-2 text-sm font-medium leading-normal text-slate-600 has-[:checked]:bg-white has-[:checked]:text-primary has-[:checked]:shadow-md">
+<span class="truncate">Weekly</span>
+<input class="invisible w-0" name="view-toggle" type="radio" value="Weekly"/>
+</label>
+</div>
+</div>
+<div class="flex items-center justify-between px-4 pb-4 pt-2">
+<button class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+<span class="material-symbols-outlined text-xl">chevron_left</span>
+</button>
+<div class="flex flex-1 justify-around">
+<div class="flex flex-col items-center gap-2">
+<span class="text-xs font-medium text-slate-500">M</span>
+<span class="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-slate-600">28</span>
+</div>
+<div class="flex flex-col items-center gap-2">
+<span class="text-xs font-medium text-slate-500">T</span>
+<span class="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-slate-600">29</span>
+</div>
+<div class="flex flex-col items-center gap-2">
+<span class="text-xs font-medium text-slate-500">W</span>
+<span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-white shadow-lg shadow-primary/30">30</span>
+</div>
+<div class="flex flex-col items-center gap-2">
+<span class="text-xs font-medium text-slate-500">T</span>
+<span class="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-slate-600">31</span>
+</div>
+<div class="flex flex-col items-center gap-2">
+<span class="text-xs font-medium text-slate-500">F</span>
+<span class="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-slate-600">1</span>
+</div>
+</div>
+<button class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+<span class="material-symbols-outlined text-xl">chevron_right</span>
+</button>
+</div>
+<div class="space-y-4 px-4">
+<div class="rounded-2xl bg-white p-4 shadow-md shadow-slate-200/50">
+<div class="flex flex-col gap-3">
+<div class="flex items-start justify-between">
+<h3 class="text-base font-bold text-slate-900">Introduction to Psychology</h3>
+<div class="flex items-center gap-2 rounded-full bg-warn/10 px-2 py-0.5">
+<div class="h-2 w-2 rounded-full bg-warn"></div>
+<span class="text-xs font-medium text-warn">Upcoming</span>
+</div>
+</div>
+<div class="flex flex-col gap-2 border-l-2 border-slate-200 pl-4">
+<div class="flex items-center gap-2 text-sm text-slate-500">
+<span class="material-symbols-outlined text-base">schedule</span>
+<span>09:00 AM - 10:30 AM (90 mins)</span>
+</div>
+<div class="flex items-center gap-2 text-sm text-slate-500">
+<span class="material-symbols-outlined text-base">location_on</span>
+<span>Room 301, Building A</span>
+</div>
+<div class="flex items-center gap-2 text-sm text-slate-500">
+<span class="material-symbols-outlined text-base">person</span>
+<span>Dr. Eleanor Vance</span>
+</div>
+</div>
+<p class="text-sm font-medium text-slate-500">Course Code: PSY101</p>
+</div>
+</div>
+<div class="rounded-2xl bg-white p-4 shadow-md shadow-slate-200/50">
+<div class="flex flex-col gap-3">
+<div class="flex items-start justify-between">
+<h3 class="text-base font-bold text-slate-900">Calculus II</h3>
+<div class="flex items-center gap-2 rounded-full bg-warn/10 px-2 py-0.5">
+<div class="h-2 w-2 rounded-full bg-warn"></div>
+<span class="text-xs font-medium text-warn">Upcoming</span>
+</div>
+</div>
+<div class="flex flex-col gap-2 border-l-2 border-slate-200 pl-4">
+<div class="flex items-center gap-2 text-sm text-slate-500">
+<span class="material-symbols-outlined text-base">schedule</span>
+<span>11:00 AM - 12:30 PM (90 mins)</span>
+</div>
+<div class="flex items-center gap-2 text-sm text-slate-500">
+<span class="material-symbols-outlined text-base">location_on</span>
+<span>Room 105, Building C</span>
+</div>
+<div class="flex items-center gap-2 text-sm text-slate-500">
+<span class="material-symbols-outlined text-base">person</span>
+<span>Prof. Alan Turing</span>
+</div>
+</div>
+<p class="text-sm font-medium text-slate-500">Course Code: MAT202</p>
+</div>
+</div>
+<div class="rounded-2xl bg-white p-4 shadow-md shadow-slate-200/50">
+<div class="flex flex-col gap-3">
+<div class="flex items-start justify-between">
+<h3 class="text-base font-bold text-slate-900">Advanced Programming</h3>
+<div class="flex items-center gap-2 rounded-full bg-warn/10 px-2 py-0.5">
+<div class="h-2 w-2 rounded-full bg-warn"></div>
+<span class="text-xs font-medium text-warn">Upcoming</span>
+</div>
+</div>
+<div class="flex flex-col gap-2 border-l-2 border-slate-200 pl-4">
+<div class="flex items-center gap-2 text-sm text-slate-500">
+<span class="material-symbols-outlined text-base">schedule</span>
+<span>02:00 PM - 04:00 PM (120 mins)</span>
+</div>
+<div class="flex items-center gap-2 text-sm text-slate-500">
+<span class="material-symbols-outlined text-base">location_on</span>
+<span>Lab 4B, Tech Center</span>
+</div>
+<div class="flex items-center gap-2 text-sm text-slate-500">
+<span class="material-symbols-outlined text-base">person</span>
+<span>Dr. Ada Lovelace</span>
+</div>
+</div>
+<p class="text-sm font-medium text-slate-500">Course Code: CS301</p>
+</div>
+</div>
+</div>
+</main>
+</div>
+
+</body></html>

@@ -1,5 +1,10 @@
-import { ClassCard } from '@/components/ClassCard';
+import { AttendanceProgress } from '@/components/AttendanceProgress';
+import { QuickActionButton } from '@/components/QuickActionButton';
+import { StatsCard } from '@/components/StatsCard';
+import { UpcomingClassCard } from '@/components/UpcomingClassCard';
 import { useTheme } from '@/context/ThemeContext';
+import { MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo } from 'react';
 import {
     Image,
@@ -17,7 +22,7 @@ const createStyles = (colors: any, theme: string) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: theme === 'dark' ? '#0E0E0E' : colors.background,
+      backgroundColor: colors.background,
     },
     header: {
       backgroundColor: colors.cardBackground,
@@ -29,37 +34,40 @@ const createStyles = (colors: any, theme: string) =>
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: 16,
-      paddingTop: 12,
-      paddingBottom: 12,
+      paddingVertical: 12,
     },
-    logoSection: {
+    logoContainer: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
     },
     logoBg: {
-      width: 44,
-      height: 44,
+      width: 40,
+      height: 40,
       borderRadius: 10,
       backgroundColor: colors.primaryLight,
       justifyContent: 'center',
       alignItems: 'center',
-      shadowColor: colors.primary,
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 2,
+    },
+    logoImage: {
+      width: 40,
+      height: 40,
+      borderRadius: 10,
     },
     headerBrand: {
-      fontSize: 20,
+      fontSize: 18,
       fontWeight: '700',
       color: colors.textPrimary,
     },
-    profileButton: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: colors.inputBackground,
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    iconButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       justifyContent: 'center',
       alignItems: 'center',
     },
@@ -68,41 +76,101 @@ const createStyles = (colors: any, theme: string) =>
       height: 40,
       borderRadius: 20,
     },
-    headerDivider: {
-      height: 1,
-      backgroundColor: colors.border,
-    },
     scrollContent: {
       flexGrow: 1,
       paddingHorizontal: 16,
-      paddingVertical: 20,
+      paddingBottom: 120,
     },
-    greetingSection: {
-      marginBottom: 24,
+    greetingCard: {
+      backgroundColor: colors.cardBackground,
+      borderRadius: 16,
+      padding: 20,
+      marginTop: 16,
+      marginBottom: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 8,
+      elevation: 2,
     },
-    greeting: {
+    greetingTitle: {
       fontSize: 28,
       fontWeight: '700',
       color: colors.textPrimary,
-      marginBottom: 4,
+      marginBottom: 16,
     },
-    greetingSubtitle: {
-      fontSize: 14,
-      color: colors.textSecondary,
+    quickActionsContainer: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: 12,
+      marginVertical: 16,
     },
     sectionTitle: {
       fontSize: 18,
       fontWeight: '700',
       color: colors.textPrimary,
-      marginBottom: 16,
-      marginTop: 8,
+      marginBottom: 12,
+      marginTop: 16,
     },
-    upcomingClass: {
-      marginBottom: 32,
+    carouselContent: {
+      paddingHorizontal: 0,
+      gap: 12,
+    },
+    statsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+      marginVertical: 12,
+      marginBottom: 24,
+    },
+    statHalf: {
+      flex: 1,
+      minWidth: '48%',
+    },
+    statFull: {
+      width: '100%',
+    },
+    spacer: {
+      height: 12,
     },
   });
 
+
+const studentClasses = [
+  {
+    time: '09:00 AM',
+    courseCode: 'CS-101',
+    courseName: 'Introduction to Computer Science',
+    location: 'Lab 101',
+    icon: 'code',
+    isPrimary: true,
+  },
+  {
+    time: '11:00 AM',
+    courseCode: 'MATH-201',
+    courseName: 'Calculus II',
+    location: 'Room 205',
+    icon: 'calculate',
+    isPrimary: false,
+  },
+  {
+    time: '02:00 PM',
+    courseCode: 'ENG-150',
+    courseName: 'English Literature',
+    location: 'Auditorium A',
+    icon: 'book',
+    isPrimary: false,
+  },
+];
+
+const stats = [
+  { icon: 'event-available', number: '12', label: 'Total Classes', color: '#10B981' },
+  { icon: 'trending-up', number: '4', label: 'Attendance Streak', color: '#2563EB' },
+  { icon: 'hourglass-top', number: '2', label: 'Absence Requests', color: '#F59E0B' },
+];
+
 export const StudentDashboard = () => {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, theme } = useTheme();
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
@@ -112,29 +180,13 @@ export const StudentDashboard = () => {
     StatusBar.setTranslucent(true);
   }, []);
 
-  const upcomingClasses = [
-    {
-      courseCode: 'CS 101',
-      courseName: 'Introduction to Computer Science',
-      time: '09:00 AM',
-      instructor: 'Prof. John Smith',
-      room: 'Lab 101',
-    },
-    {
-      courseCode: 'MATH 201',
-      courseName: 'Calculus II',
-      time: '11:00 AM',
-      instructor: 'Prof. Jane Doe',
-      room: 'Room 205',
-    },
-    {
-      courseCode: 'ENG 150',
-      courseName: 'English Literature',
-      time: '02:00 PM',
-      instructor: 'Prof. Robert Johnson',
-      room: 'Auditorium A',
-    },
-  ];
+  const handleProfilePress = () => {
+    router.push('/profile' as any);
+  };
+
+  const handleViewSchedule = () => {
+    router.push('/(main)/view-schedule' as any);
+  };
 
   return (
     <View style={styles.container}>
@@ -145,59 +197,131 @@ export const StudentDashboard = () => {
       />
 
       {/* Header */}
-      <Animated.View entering={FadeInDown.delay(0)} style={styles.header}>
-        <View style={[styles.headerTop, { paddingTop: insets.top + 12 }]}>
-          <View style={styles.logoSection}>
-            <Image
-              source={require('@/assets/images/ATMA-LOGO.png')}
-              style={styles.logoBg}
-              resizeMode="contain"
-            />
+      <Animated.View
+        entering={FadeInDown.delay(0)}
+        style={[styles.header, { paddingTop: insets.top }]}
+      >
+        <View style={styles.headerTop}>
+          <View style={styles.logoContainer}>
+            <View style={styles.logoBg}>
+              <Image
+                source={require('@/assets/images/ATMA-LOGO.png')}
+                style={styles.logoImage}
+                resizeMode="cover"
+              />
+            </View>
             <Text style={styles.headerBrand}>ATMA</Text>
           </View>
-          <Pressable style={styles.profileButton}>
-            <Image
-              source={
-                theme === 'light'
-                  ? require('@/assets/images/profile-icon4.png')
-                  : require('@/assets/images/profile-icon3.png')
-              }
-              style={styles.profileIcon}
-              resizeMode="contain"
-            />
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable style={styles.iconButton}>
+              <MaterialIcons
+                name="search"
+                size={24}
+                color={colors.textSecondary}
+              />
+            </Pressable>
+            <Pressable style={styles.iconButton} onPress={handleProfilePress}>
+              <Image
+                source={
+                  theme === 'light'
+                    ? require('@/assets/images/profile-icon4.png')
+                    : require('@/assets/images/profile-icon3.png')
+                }
+                style={styles.profileIcon}
+                resizeMode="contain"
+              />
+            </Pressable>
+          </View>
         </View>
-        <View style={styles.headerDivider} />
       </Animated.View>
 
       {/* Main Content */}
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        scrollIndicatorInsets={{ right: 1 }}
       >
-        {/* Greeting */}
-        <Animated.View entering={FadeInUp.delay(100)} style={styles.greetingSection}>
-          <Text style={styles.greeting}>Welcome back, Student!</Text>
-          <Text style={styles.greetingSubtitle}>Here are your classes for today</Text>
+        {/* Greeting Card with Attendance */}
+        <Animated.View entering={FadeInUp.delay(100)} style={styles.greetingCard}>
+          <Text style={styles.greetingTitle}>Good afternoon, Alex</Text>
+          <AttendanceProgress percentage={85} colors={colors} />
+        </Animated.View>
+
+        {/* Quick Actions */}
+        <Animated.View
+          entering={FadeInUp.delay(200)}
+          style={styles.quickActionsContainer}
+        >
+          <QuickActionButton
+            icon="qr-code-scanner"
+            label="Mark Attendance"
+            onPress={() => {}}
+            colors={colors}
+          />
+          <QuickActionButton
+            icon="school"
+            label="My Classes"
+            onPress={() => {}}
+            colors={colors}
+          />
+          <QuickActionButton
+            icon="calendar-month"
+            label="View Schedule"
+            onPress={handleViewSchedule}
+            colors={colors}
+          />
         </Animated.View>
 
         {/* Upcoming Classes Section */}
-        <Animated.View entering={FadeInUp.delay(200)} style={styles.upcomingClass}>
-          <Text style={styles.sectionTitle}>Today's Classes</Text>
-          {upcomingClasses.map((classItem, index) => (
-            <ClassCard
-              key={`${classItem.courseCode}-${index}`}
-              courseCode={classItem.courseCode}
-              courseName={classItem.courseName}
-              time={classItem.time}
-              instructor={classItem.instructor}
-              room={classItem.room}
-              colors={colors}
-              theme={theme}
-              delay={300 + index * 100}
-            />
-          ))}
+        <Animated.View entering={FadeInUp.delay(300)}>
+          <Text style={styles.sectionTitle}>Upcoming Today</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.carouselContent}
+            scrollIndicatorInsets={{ bottom: 1 }}
+          >
+            {studentClasses.map((classItem, index) => (
+              <UpcomingClassCard
+                key={`${classItem.courseCode}-${index}`}
+                time={classItem.time}
+                courseCode={classItem.courseCode}
+                courseName={classItem.courseName}
+                location={classItem.location}
+                colors={colors}
+                theme={theme}
+                isPrimary={classItem.isPrimary}
+                delay={400 + index * 100}
+              />
+            ))}
+          </ScrollView>
         </Animated.View>
+
+        {/* Stats Section */}
+        <Animated.View entering={FadeInUp.delay(500)}>
+          <Text style={styles.sectionTitle}>Your Week at a Glance</Text>
+          <View style={styles.statsGrid}>
+            {stats.map((stat, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.statHalf,
+                  index === 2 && styles.statFull,
+                ]}
+              >
+                <StatsCard
+                  icon={stat.icon as any}
+                  number={stat.number}
+                  label={stat.label}
+                  colors={colors}
+                  iconColor={stat.color}
+                />
+              </View>
+            ))}
+          </View>
+        </Animated.View>
+
+        <View style={styles.spacer} />
       </ScrollView>
     </View>
   );
