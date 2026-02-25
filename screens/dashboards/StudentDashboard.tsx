@@ -2,6 +2,7 @@ import { AttendanceProgress } from '@/components/AttendanceProgress';
 import { QuickActionButton } from '@/components/QuickActionButton';
 import { StatsCard } from '@/components/StatsCard';
 import { UpcomingClassCard } from '@/components/UpcomingClassCard';
+import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -173,7 +174,23 @@ export const StudentDashboard = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, theme } = useTheme();
+  const { userProfile } = useAuth();
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
+
+  // Get time-based greeting
+  const getTimeBasedGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) {
+      return 'Good morning';
+    } else if (hour < 18) {
+      return 'Good afternoon';
+    } else {
+      return 'Good evening';
+    }
+  };
+
+  const greeting = getTimeBasedGreeting();
+  const userName = userProfile?.first_name || 'there';
 
   useEffect(() => {
     StatusBar.setBackgroundColor('transparent');
@@ -223,12 +240,12 @@ export const StudentDashboard = () => {
             <Pressable style={styles.iconButton} onPress={handleProfilePress}>
               <Image
                 source={
-                  theme === 'light'
-                    ? require('@/assets/images/profile-icon4.png')
-                    : require('@/assets/images/profile-icon3.png')
+                  userProfile?.profile_picture_url && userProfile.profile_picture_url.trim().length > 0
+                    ? { uri: userProfile.profile_picture_url }
+                    : require('@/assets/images/profile-icon1.png')
                 }
                 style={styles.profileIcon}
-                resizeMode="contain"
+                resizeMode="cover"
               />
             </Pressable>
           </View>
@@ -243,7 +260,7 @@ export const StudentDashboard = () => {
       >
         {/* Greeting Card with Attendance */}
         <Animated.View entering={FadeInUp.delay(100)} style={styles.greetingCard}>
-          <Text style={styles.greetingTitle}>Good afternoon, Alex</Text>
+          <Text style={styles.greetingTitle}>{greeting}, {userName}</Text>
           <AttendanceProgress percentage={85} colors={colors} />
         </Animated.View>
 

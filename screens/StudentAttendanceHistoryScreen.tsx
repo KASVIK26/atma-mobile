@@ -1,3 +1,4 @@
+import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -257,6 +258,7 @@ export const StudentAttendanceHistoryScreen = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, theme } = useTheme();
+  const { userProfile } = useAuth();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [filterMode, setFilterMode] = useState<'week' | 'month'>('week');
@@ -326,20 +328,24 @@ export const StudentAttendanceHistoryScreen = () => {
         style={[styles.header, { paddingTop: insets.top }]}
       >
         <View style={styles.headerBrand}>
-          <View style={styles.brandIcon}>
-            <MaterialIcons name="school" size={24} color={colors.primary} />
+          <View style={[styles.brandIcon, { backgroundColor: colors.primaryLight, borderRadius: 10, width: 40, height: 40 }]}>
+            <Image
+              source={require('@/assets/images/ATMA-LOGO.png')}
+              style={{ width: 40, height: 40, borderRadius: 10 }}
+              resizeMode="contain"
+            />
           </View>
           <Text style={styles.brandText}>Atma Mobile</Text>
         </View>
         <Pressable style={{ width: 40, height: 40 }} onPress={handleProfilePress}>
           <Image
             source={
-              theme === 'light'
-                ? require('@/assets/images/profile-icon4.png')
-                : require('@/assets/images/profile-icon3.png')
+              userProfile?.profile_picture_url && userProfile.profile_picture_url.trim().length > 0
+                ? { uri: userProfile.profile_picture_url }
+                : require('@/assets/images/profile-icon1.png')
             }
             style={styles.profileIcon}
-            resizeMode="contain"
+            resizeMode="cover"
           />
         </Pressable>
       </Animated.View>

@@ -1,4 +1,5 @@
 import { BottomTabBar } from '@/components/BottomTabBar';
+import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Stack, usePathname } from 'expo-router';
 import React from 'react';
@@ -14,11 +15,12 @@ const createStyles = (colors: any) =>
 
 export default function MainLayout() {
   const { colors } = useTheme();
+  const { userRole } = useAuth();
   const pathname = usePathname();
   const styles = StyleSheet.create(createStyles(colors));
 
-  // Hide tab bar for view-schedule screen
-  const showTabBar = !pathname.includes('view-schedule');
+  // Hide tab bar for view-schedule screen and for teacher/admin roles
+  const showTabBar = !pathname.includes('view-schedule') && userRole === 'student';
 
   return (
     <View style={styles.container}>

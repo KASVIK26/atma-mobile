@@ -1,6 +1,7 @@
 import { QuickActionButton } from '@/components/QuickActionButton';
 import { StatsCard } from '@/components/StatsCard';
 import { UpcomingClassCard } from '@/components/UpcomingClassCard';
+import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -154,6 +155,7 @@ export const TeacherDashboard = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, theme } = useTheme();
+  const { userProfile } = useAuth();
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
 
   useEffect(() => {
@@ -167,6 +169,10 @@ export const TeacherDashboard = () => {
 
   const handleViewSchedule = () => {
     router.push('/(main)/view-schedule' as any);
+  };
+
+  const handleAttendance = () => {
+    router.push('/(main)/history' as any);
   };
 
   const today = new Date();
@@ -207,12 +213,12 @@ export const TeacherDashboard = () => {
             <Pressable style={styles.iconButton} onPress={handleProfilePress}>
               <Image
                 source={
-                  theme === 'light'
-                    ? require('@/assets/images/profile-icon4.png')
-                    : require('@/assets/images/profile-icon3.png')
+                  userProfile?.profile_picture_url && userProfile.profile_picture_url.trim().length > 0
+                    ? { uri: userProfile.profile_picture_url }
+                    : require('@/assets/images/profile-icon1.png')
                 }
                 style={styles.profileIcon}
-                resizeMode="contain"
+                resizeMode="cover"
               />
             </Pressable>
           </View>
@@ -227,7 +233,14 @@ export const TeacherDashboard = () => {
       >
         {/* Headline */}
         <Animated.View entering={FadeInUp.delay(100)}>
-          <Text style={styles.headline}>Good afternoon, Dr. Evans</Text>
+          {(() => {
+            const hour = new Date().getHours();
+            let greeting = 'Good morning';
+            if (hour >= 12 && hour < 18) greeting = 'Good afternoon';
+            else if (hour >= 18) greeting = 'Good evening';
+            const firstName = userProfile?.first_name || 'Teacher';
+            return <Text style={styles.headline}>{greeting}, {firstName}</Text>;
+          })()}
           <Text style={styles.date}>Today is {dateString}</Text>
         </Animated.View>
 
@@ -257,7 +270,7 @@ export const TeacherDashboard = () => {
           <QuickActionButton
             icon="qr-code-scanner"
             label="Start Attendance"
-            onPress={() => {}}
+            onPress={handleAttendance}
             colors={colors}
           />
           <QuickActionButton

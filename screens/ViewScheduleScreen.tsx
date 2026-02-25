@@ -1,3 +1,4 @@
+import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -499,6 +500,7 @@ export const ViewScheduleScreen = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, theme } = useTheme();
+  const { userProfile } = useAuth();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [viewMode, setViewMode] = useState<'daily' | 'weekly'>('daily');
@@ -824,18 +826,27 @@ export const ViewScheduleScreen = () => {
             />
           </Pressable>
 
-          <Text style={styles.headerTitle}>My Schedule</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+            <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.primaryLight, justifyContent: 'center', alignItems: 'center' }}>
+              <Image
+                source={require('@/assets/images/ATMA-LOGO.png')}
+                style={{ width: 40, height: 40, borderRadius: 10 }}
+                resizeMode="contain"
+              />
+            </View>
+            <Text style={styles.headerTitle}>My Schedule</Text>
+          </View>
 
           <View style={styles.headerActions}>
             <Pressable style={styles.iconButton} onPress={() => router.push('/(main)/profile' as any)}>
               <Image
                 source={
-                  theme === 'light'
-                    ? require('@/assets/images/profile-icon4.png')
-                    : require('@/assets/images/profile-icon3.png')
+                  userProfile?.profile_picture_url && userProfile.profile_picture_url.trim().length > 0
+                    ? { uri: userProfile.profile_picture_url }
+                    : require('@/assets/images/profile-icon1.png')
                 }
                 style={styles.profileIcon}
-                resizeMode="contain"
+                resizeMode="cover"
               />
             </Pressable>
           </View>

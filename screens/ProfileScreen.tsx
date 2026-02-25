@@ -1,19 +1,20 @@
 import { ProfileCard } from '@/components/ProfileCard';
 import { ProfileMenuItem } from '@/components/ProfileMenuItem';
 import { SettingsMenuItem } from '@/components/SettingsMenuItem';
+import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { MaterialIcons } from '@expo/vector-icons';
+import { pickAndUploadImage } from '@/lib/image-upload';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
-  Image,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
+    Alert,
+    Image,
+    Pressable,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -115,12 +116,51 @@ export const ProfileScreen = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, theme, toggleTheme } = useTheme();
+  const { signOut, user, userProfile, updateUserProfile } = useAuth();
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   useEffect(() => {
     StatusBar.setBackgroundColor('transparent');
     StatusBar.setTranslucent(true);
   }, []);
+
+  const handlePhotoUpload = async () => {
+    if (!user?.id) {
+      Alert.alert('Error', 'User ID not found');
+      return;
+    }
+
+    setIsUploadingImage(true);
+    try {
+      const { url, error } = await pickAndUploadImage(user.id);
+
+      if (error) {
+        console.error('[handlePhotoUpload] Error:', error);
+        Alert.alert('Upload Failed', error.message || 'Failed to upload photo');
+        return;
+      }
+
+      if (url) {
+        // Update user profile with new image URL
+        const { error: updateError } = await updateUserProfile({
+          profile_picture_url: url,
+        } as any);
+
+        if (updateError) {
+          Alert.alert('Error', 'Failed to update profile picture');
+          return;
+        }
+
+        Alert.alert('Success', 'Profile photo updated successfully!');
+      }
+    } catch (error) {
+      console.error('[handlePhotoUpload] Unexpected error:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
@@ -131,9 +171,20 @@ export const ProfileScreen = () => {
       },
       {
         text: 'Logout',
-        onPress: () => {
-          // Navigate to welcome screen
-          router.replace('/(auth)/welcome' as any);
+        onPress: async () => {
+          try {
+            // Clear auth state
+            await signOut();
+            
+            // Explicitly navigate to login screen
+            // Use setTimeout to ensure state updates complete before navigation
+            setTimeout(() => {
+              router.replace('/(auth)/welcome' as any);
+            }, 100);
+          } catch (error) {
+            console.error('Logout error:', error);
+            Alert.alert('Error', 'Failed to logout. Please try again.');
+          }
         },
         style: 'destructive',
       },
@@ -141,10 +192,7 @@ export const ProfileScreen = () => {
   };
 
   const accountMenuItems = [
-    { icon: 'add-a-photo', label: 'Change Avatar' },
-    { icon: 'badge', label: 'Update Name' },
-    { icon: 'lock-reset', label: 'Change Password' },
-    { icon: 'link', label: 'Link University' },
+    { icon: 'edit', label: 'Change Profile' },
   ];
 
   const settingsMenuItems = [
@@ -170,20 +218,13 @@ export const ProfileScreen = () => {
         <View style={styles.headerContent}>
           <View style={styles.headerLeft}>
             <View style={styles.headerIcon}>
-              <MaterialIcons name="school" size={24} color={colors.primary} />
+              <Image
+                source={require('@/assets/images/ATMA-LOGO.png')}
+                style={{ width: 40, height: 40, borderRadius: 10 }}
+                resizeMode="contain"
+              />
             </View>
             <Text style={styles.headerTitle}>Atma Mobile</Text>
-          </View>
-          <View style={styles.profileButton}>
-            <Image
-              source={
-                theme === 'light'
-                  ? require('@/assets/images/profile-icon4.png')
-                  : require('@/assets/images/profile-icon3.png')
-              }
-              style={styles.profileIcon}
-              resizeMode="contain"
-            />
           </View>
         </View>
       </Animated.View>
@@ -197,12 +238,14 @@ export const ProfileScreen = () => {
         {/* Profile Card */}
         <Animated.View entering={FadeInUp.delay(100)}>
           <ProfileCard
-            name="Jordan Smith"
-            email="j.smith@university.edu"
-            university="Quantum University"
-            role="Student"
-            avatarUrl="https://lh3.googleusercontent.com/aida-public/AB6AXuC4yhDmcoWBfJZjre92INShL3L5yJMy4kKLZouyHkSLzHzZeKXJz0XbbpqcAprY-urIPDR8Q93fFgmTZHI6ItWhBwTkFpHRkR4rnK8RaOL6GNHTdb5TkfaR4sduvKvrg5GC2wwqUn7aAfQeaCS5pnb79Xo4jMR45kCYdh4pajArRmNIFaliVZIUXTdnHTnudnTN-aa4ZoOkt46ocBzhgRCI5QdPdr31gIgwfnC2DaVUT6xEymB0W9fpNIU5rNtN-cApOR7HIAmeMrmW"
+            name={userProfile ? `${userProfile.first_name} ${userProfile.last_name}` : 'User'}
+            email={userProfile?.email || 'No email'}
+            university={userProfile?.university_name || 'No university'}
+            role={userProfile?.role ? userProfile.role.charAt(0).toUpperCase() + userProfile.role.slice(1) : 'User'}
+            avatarUrl={userProfile?.profile_picture_url}
             colors={colors}
+            instructorCode={userProfile?.role?.toLowerCase() === 'teacher' ? userProfile?.instructor_code : undefined}
+            department={userProfile?.role?.toLowerCase() === 'teacher' ? userProfile?.department : undefined}
           />
         </Animated.View>
 
@@ -215,7 +258,11 @@ export const ProfileScreen = () => {
                 key={index}
                 icon={item.icon}
                 label={item.label}
-                onPress={() => {}}
+                onPress={() => {
+                  if (item.label === 'Change Profile') {
+                    handlePhotoUpload();
+                  }
+                }}
                 colors={colors}
                 showBorder={index < accountMenuItems.length - 1}
               />

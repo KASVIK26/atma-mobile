@@ -6,8 +6,10 @@ interface ProfileCardProps {
   email: string;
   university: string;
   role: string;
-  avatarUrl: string;
+  avatarUrl?: string;
   colors: any;
+  instructorCode?: string;
+  department?: string;
 }
 
 const createStyles = (colors: any) =>
@@ -41,14 +43,20 @@ const createStyles = (colors: any) =>
       textAlign: 'center',
     },
     email: {
-      fontSize: 16,
+      fontSize: 14,
       color: colors.textSecondary,
       textAlign: 'center',
     },
     university: {
-      fontSize: 16,
+      fontSize: 14,
       color: colors.textSecondary,
       textAlign: 'center',
+    },
+    extraField: {
+      fontSize: 13,
+      color: colors.textTertiary,
+      textAlign: 'center',
+      marginTop: 4,
     },
     roleBadge: {
       backgroundColor: colors.primaryLight,
@@ -71,16 +79,39 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
   role,
   avatarUrl,
   colors,
+  instructorCode,
+  department,
 }) => {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
+  // Use a placeholder name fallback
+  const displayName = name && name.trim() ? name : 'User Profile';
+  const displayEmail = email && email.trim() ? email : 'No email';
+  const displayUniversity = university && university.trim() ? university : 'No university';
+
   return (
     <View style={styles.container}>
-      <Image source={{ uri: avatarUrl }} style={styles.avatar} resizeMode="cover" />
+      <Image
+        source={
+          avatarUrl && avatarUrl.trim().length > 0
+            ? { uri: avatarUrl }
+            : require('@/assets/images/profile-icon1.png')
+        }
+        style={styles.avatar}
+        resizeMode="cover"
+      />
       <View style={styles.nameEmail}>
-        <Text style={styles.name}>{name}</Text>
-        <Text style={styles.email}>{email}</Text>
-        <Text style={styles.university}>{university}</Text>
+        <Text style={styles.name}>{displayName}</Text>
+        <Text style={styles.email}>{displayEmail}</Text>
+        {displayUniversity !== 'No university' && (
+          <Text style={styles.university}>{displayUniversity}</Text>
+        )}
+        {role?.toLowerCase() === 'teacher' && instructorCode && (
+          <Text style={styles.extraField}>Code: {instructorCode}</Text>
+        )}
+        {role?.toLowerCase() === 'teacher' && department && (
+          <Text style={styles.extraField}>Dept: {department}</Text>
+        )}
       </View>
       <View style={styles.roleBadge}>
         <Text style={styles.roleText}>{role}</Text>

@@ -1,9 +1,9 @@
-import { useUser } from '@/context/UserContext';
+import { useAuth } from '@/context/AuthContext';
 import { StudentAttendanceHistoryScreen } from '@/screens/StudentAttendanceHistoryScreen';
 import { TeacherAttendanceHistoryScreen } from '@/screens/TeacherAttendanceHistoryScreen';
 
 export default function History() {
-  const { userRole } = useUser();
+  const { userRole } = useAuth();
 
   if (userRole === 'teacher') {
     return <TeacherAttendanceHistoryScreen />;

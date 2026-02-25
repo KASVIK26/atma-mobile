@@ -31,7 +31,17 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+.env.*.local
+
+# documentation
+*.md
+!README.md
+!AUTHENTICATION_IMPLEMENTATION_GUIDE.md
+
+# database
+*.sql
 
 # typescript
 *.tsbuildinfo

@@ -1,6 +1,6 @@
 import { TimelineClassCard } from '@/components/TimelineClassCard';
+import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo } from 'react';
 import {
@@ -122,6 +122,7 @@ export const ClassesScreen = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, theme } = useTheme();
+  const { userProfile } = useAuth();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   useEffect(() => {
@@ -148,20 +149,24 @@ export const ClassesScreen = () => {
       >
         <View style={styles.headerContent}>
           <View style={styles.headerLeft}>
-            <View style={styles.headerIcon}>
-              <MaterialIcons name="school" size={24} color={colors.primary} />
+            <View style={[styles.headerIcon, { backgroundColor: colors.primaryLight, borderRadius: 10, width: 40, height: 40 }]}>
+              <Image
+                source={require('@/assets/images/ATMA-LOGO.png')}
+                style={{ width: 40, height: 40, borderRadius: 10 }}
+                resizeMode="contain"
+              />
             </View>
             <Text style={styles.headerTitle}>Atma Mobile</Text>
           </View>
           <Pressable style={styles.profileButton} onPress={handleProfilePress}>
             <Image
               source={
-                theme === 'light'
-                  ? require('@/assets/images/profile-icon4.png')
-                  : require('@/assets/images/profile-icon3.png')
+                userProfile?.profile_picture_url && userProfile.profile_picture_url.trim().length > 0
+                  ? { uri: userProfile.profile_picture_url }
+                  : require('@/assets/images/profile-icon1.png')
               }
               style={styles.profileIcon}
-              resizeMode="contain"
+              resizeMode="cover"
             />
           </Pressable>
         </View>
