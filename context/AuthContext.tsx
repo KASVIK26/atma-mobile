@@ -232,7 +232,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { data, error } = await supabase
         .from('student_enrollments')
         .select('*')
-        .eq('student_id', studentId)
+        .eq('user_id', studentId)
         .eq('is_active', true);
 
       if (error) {

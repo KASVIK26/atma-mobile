@@ -1,18 +1,22 @@
+import { SessionBlock } from '@/components/SessionBlock';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
+import { getSemesterDates, getStudentSchedule, getTeacherSchedule, LectureSessionExtended } from '@/lib/schedule-service';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+    ActivityIndicator,
     Image,
     Pressable,
+    RefreshControl,
     ScrollView,
     StatusBar,
     StyleSheet,
     Text,
     View,
 } from 'react-native';
-import Animated, { FadeInDown, FadeInUp, Layout } from 'react-native-reanimated';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const createStyles = (colors: any) =>
@@ -82,6 +86,8 @@ const createStyles = (colors: any) =>
       shadowOpacity: 0.12,
       shadowRadius: 6,
       elevation: 4,
+      borderBottomWidth: 3,
+      borderBottomColor: colors.primary,
     },
     toggleText: {
       fontSize: 14,
@@ -119,8 +125,7 @@ const createStyles = (colors: any) =>
       alignItems: 'center',
       gap: 8,
       paddingVertical: 12,
-      paddingHorizontal: 12,
-      borderRadius: 12,
+      paddingHorizontal: 8,
       minWidth: 60,
     },
     dateItemToday: {
@@ -136,9 +141,9 @@ const createStyles = (colors: any) =>
       fontSize: 14,
       fontWeight: '700',
       color: colors.textPrimary,
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 42,
+      height: 42,
+      borderRadius: 21,
       justifyContent: 'center',
       alignItems: 'center',
       textAlignVertical: 'center',
@@ -399,82 +404,6 @@ interface ScheduleClass {
   date: Date;
 }
 
-const generateScheduleData = (): ScheduleClass[] => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const classes: ScheduleClass[] = [
-    {
-      id: '1',
-      title: 'Introduction to Psychology',
-      courseCode: 'PSY101',
-      time: '09:00 AM',
-      duration: 90,
-      location: 'Room 301, Building A',
-      instructor: 'Dr. Eleanor Vance',
-      status: 'upcoming',
-      date: new Date(today),
-    },
-    {
-      id: '2',
-      title: 'Calculus II',
-      courseCode: 'MAT202',
-      time: '11:00 AM',
-      duration: 90,
-      location: 'Room 105, Building C',
-      instructor: 'Prof. Alan Turing',
-      status: 'upcoming',
-      date: new Date(today),
-    },
-    {
-      id: '3',
-      title: 'Advanced Programming',
-      courseCode: 'CS301',
-      time: '02:00 PM',
-      duration: 120,
-      location: 'Lab 4B, Tech Center',
-      instructor: 'Dr. Ada Lovelace',
-      status: 'upcoming',
-      date: new Date(today),
-    },
-    {
-      id: '4',
-      title: 'Physics Lab',
-      courseCode: 'PHY151',
-      time: '04:00 PM',
-      duration: 120,
-      location: 'Lab 2A, Science Building',
-      instructor: 'Prof. Marie Curie',
-      status: 'ongoing',
-      date: new Date(today),
-    },
-    {
-      id: '5',
-      title: 'Data Structures',
-      courseCode: 'CS201',
-      time: '10:00 AM',
-      duration: 90,
-      location: 'Room 201, Building B',
-      instructor: 'Dr. Donald Knuth',
-      status: 'upcoming',
-      date: new Date(today.getTime() + 86400000),
-    },
-    {
-      id: '6',
-      title: 'Linear Algebra',
-      courseCode: 'MAT301',
-      time: '01:00 PM',
-      duration: 90,
-      location: 'Room 305, Building A',
-      instructor: 'Prof. Emmy Noether',
-      status: 'upcoming',
-      date: new Date(today.getTime() + 86400000),
-    },
-  ];
-
-  return classes;
-};
-
 const getDatesBetween = (startDate: Date, endDate: Date): Date[] => {
   const dates: Date[] = [];
   const currentDate = new Date(startDate);
@@ -496,24 +425,277 @@ const getDayName = (date: Date): string => {
   return date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
 };
 
+/**
+ * Convert date to YYYY-MM-DD format for API
+ */
+const formatDateForAPI = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Convert LectureSessionExtended to ScheduleClass for compatibility
+ */
+const convertToScheduleClass = (session: LectureSessionExtended, colors: any): ScheduleClass => {
+  const [startHour, startMin] = session.start_time.split(':').map(Number);
+  const [endHour, endMin] = session.end_time.split(':').map(Number);
+  const startMinutes = startHour * 60 + startMin;
+  const endMinutes = endHour * 60 + endMin;
+  const duration = endMinutes - startMinutes;
+
+  const hour = startHour % 12 || 12;
+  const period = startHour >= 12 ? 'PM' : 'AM';
+  const time = `${hour}:${String(startMin).padStart(2, '0')} ${period}`;
+
+  const room = session.room?.room_name || session.room?.room_number || 'No room';
+  const building = session.room?.building?.name ? `, ${session.room.building.name}` : '';
+  const location = `${room}${building}`;
+
+  const instructorNames = session.instructors
+    ?.map((ins) => ins.name)
+    .join(', ') || 'No instructor';
+
+  const status = session.session_status === 'active' ? 'ongoing' : 
+                 session.session_status === 'scheduled' ? 'upcoming' : 'completed';
+
+  return {
+    id: session.id,
+    title: session.course?.name || 'Course',
+    courseCode: session.course?.code || 'CODE',
+    time,
+    duration,
+    location,
+    instructor: instructorNames,
+    status: status as 'upcoming' | 'ongoing' | 'completed',
+    date: new Date(session.session_date),
+  };
+};
+
 export const ViewScheduleScreen = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, theme } = useTheme();
-  const { userProfile } = useAuth();
+  const { userProfile, isStudent, isTeacher, instructor } = useAuth();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [viewMode, setViewMode] = useState<'daily' | 'weekly'>('daily');
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [allSessions, setAllSessions] = useState<LectureSessionExtended[]>([]);
+  const [allClasses, setAllClasses] = useState<ScheduleClass[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cacheKey, setCacheKey] = useState<string>('');
+  const [semesterStartDate, setSemesterStartDate] = useState<Date | null>(null);
+  const [semesterEndDate, setSemesterEndDate] = useState<Date | null>(null);
+  const dateScrollRef = useRef<ScrollView>(null);
 
-  const allClasses = generateScheduleData();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Get 7 dates around today (3 before, today, 3 after) - for better visibility
+  /**
+   * Fetch schedule data based on user role
+   */
+  const fetchSchedule = useCallback(
+    async (showLoading: boolean = true) => {
+      console.log(
+        `[ViewScheduleScreen] fetchSchedule called - showLoading: ${showLoading}, userProfile: ${!!userProfile}, isStudent: ${isStudent}, isTeacher: ${isTeacher}`
+      );
+
+      if (!userProfile) {
+        console.log('[ViewScheduleScreen] ⚠️ User profile not loaded yet');
+        return;
+      }
+
+      if (showLoading) {
+        console.log('[ViewScheduleScreen] ⏳ Setting isLoading = true');
+        setIsLoading(true);
+      }
+      setError(null);
+
+      try {
+        // Get date range: 30 days back to 90 days forward for optimal caching
+        const startDate = new Date(today);
+        startDate.setDate(today.getDate() - 30);
+        
+        const endDate = new Date(today);
+        endDate.setDate(today.getDate() + 90);
+
+        const startDateStr = formatDateForAPI(startDate);
+        const endDateStr = formatDateForAPI(endDate);
+
+        console.log(
+          `[ViewScheduleScreen] 📅 Date range: ${startDateStr} to ${endDateStr} (${Math.ceil((new Date(endDateStr).getTime() - new Date(startDateStr).getTime()) / (1000 * 60 * 60 * 24))} days)`
+        );
+
+        // Create cache key
+        const newCacheKey = `${userProfile.id}-${startDateStr}-${endDateStr}`;
+        console.log(`[ViewScheduleScreen] 🎯 Cache key: ${newCacheKey.substring(0, 20)}...`);
+        setCacheKey(newCacheKey);
+
+        let sessions: LectureSessionExtended[] = [];
+        let fetchError: Error | null = null;
+
+        if (isStudent && userProfile.id) {
+          console.log(
+            `[ViewScheduleScreen] 👨‍🎓 Fetching STUDENT schedule for user: ${userProfile.id.substring(0, 8)}...`
+          );
+          console.time('[ViewScheduleScreen] Student schedule fetch');
+          // Fetch student schedule
+          const result = await getStudentSchedule(
+            userProfile.id,
+            userProfile.university_id,
+            startDateStr,
+            endDateStr
+          );
+          console.timeEnd('[ViewScheduleScreen] Student schedule fetch');
+          sessions = result.sessions || [];
+          fetchError = result.error;
+        } else if (isTeacher && instructor?.id) {
+          console.log(
+            `[ViewScheduleScreen] 👨‍🏫 Fetching TEACHER schedule for instructor: ${instructor.id.substring(0, 8)}...`
+          );
+          console.time('[ViewScheduleScreen] Teacher schedule fetch');
+          // Fetch teacher schedule using instructor ID from auth context
+          const result = await getTeacherSchedule(
+            instructor.id,
+            userProfile.university_id,
+            startDateStr,
+            endDateStr
+          );
+          console.timeEnd('[ViewScheduleScreen] Teacher schedule fetch');
+          sessions = result.sessions || [];
+          fetchError = result.error;
+        } else if (isTeacher && !instructor?.id) {
+          // Teacher but no instructor ID yet - might be loading
+          console.warn(
+            '[ViewScheduleScreen] ⚠️ Teacher logged in but instructor ID not available yet'
+          );
+          setError('Instructor information is still loading. Please try again.');
+          setIsLoading(false);
+          return;
+        }
+
+        if (fetchError) {
+          console.error('[ViewScheduleScreen] ❌ Schedule fetch error:', fetchError);
+          setError(`Failed to load schedule: ${fetchError.message || 'Unknown error'}`);
+        } else {
+          console.log(
+            `[ViewScheduleScreen] ✅ Loaded ${sessions.length} sessions successfully`
+          );
+          if (sessions.length > 0) {
+            console.log(
+              `[ViewScheduleScreen] 📊 Sample sessions: ${JSON.stringify(
+                sessions.slice(0, 2).map((s) => ({
+                  course: s.course?.name,
+                  date: s.session_date,
+                  time: `${s.start_time}-${s.end_time}`,
+                }))
+              )}`
+            );
+          }
+          setAllSessions(sessions);
+          // Convert to ScheduleClass format
+          console.log(`[ViewScheduleScreen] Converting ${sessions.length} sessions to UI format...`);
+          const convertedClasses = sessions.map((session, idx) => {
+            if (idx === 0) {
+              console.log(
+                `[ViewScheduleScreen] Sample conversion: ${session.course?.name} at ${session.start_time}`
+              );
+            }
+            return convertToScheduleClass(session, colors);
+          });
+          console.log(
+            `[ViewScheduleScreen] ✏️ Converted ${convertedClasses.length} classes for UI`
+          );
+          setAllClasses(convertedClasses);
+          setError(null);
+        }
+      } catch (err) {
+        console.error('[ViewScheduleScreen] ❌ Unexpected error during fetch:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        setError(`An error occurred: ${errorMessage}`);
+      } finally {
+        console.log('[ViewScheduleScreen] 🔚 Fetch completed - setting loading states to false');
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [userProfile, isStudent, isTeacher, instructor, colors, today]
+  );
+
+  /**
+   * Fetch schedule on component mount - ONLY when profile loads
+   * Don't include fetchSchedule in deps to avoid infinite loop
+   */
+  useEffect(() => {
+    if (!userProfile) return; // Wait for profile to load
+
+    console.log(
+      `[ViewScheduleScreen] useEffect triggered ONCE - profile loaded: userProfile=${userProfile.id.substring(0, 8)}..., isStudent=${isStudent}, isTeacher=${isTeacher}`
+    );
+    fetchSchedule(true);
+  }, [userProfile?.id, userProfile?.university_id]); // Only re-fetch if IDs change, NOT fetchSchedule
+
+  /**
+   * Fetch semester dates when profile loads
+   */
+  useEffect(() => {
+    if (!userProfile?.semester_id) {
+      console.warn('[ViewScheduleScreen] No semester_id in user profile');
+      return;
+    }
+
+    const fetchSemesterDates = async () => {
+      console.log('[ViewScheduleScreen] 📚 Fetching semester dates for:', userProfile.semester_id.substring(0, 8) + '...');
+      const semesterDates = await getSemesterDates(userProfile.semester_id!);
+      
+      if (semesterDates) {
+        const start = new Date(semesterDates.startDate);
+        const end = new Date(semesterDates.endDate);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(0, 0, 0, 0);
+        
+        setSemesterStartDate(start);
+        setSemesterEndDate(end);
+        
+        // Set default selected date to today if within semester range, else to semester start
+        if (today >= start && today <= end) {
+          setSelectedDate(today);
+        } else {
+          setSelectedDate(start);
+        }
+        
+        console.log('[ViewScheduleScreen] ✓ Semester dates set:', semesterDates.startDate, 'to', semesterDates.endDate);
+      }
+    };
+
+    fetchSemesterDates();
+  }, [userProfile?.semester_id]);
+
+  /**
+   * Handle refresh (pull-down)
+   * No dependency on fetchSchedule to avoid loops
+   */
+  const handleRefresh = useCallback(() => {
+    console.log('[ViewScheduleScreen] 🔄 User triggered pull-to-refresh');
+    console.time('[ViewScheduleScreen] Refresh duration');
+    setIsRefreshing(true);
+    if (!userProfile) {
+      console.warn('[ViewScheduleScreen] Cannot refresh - user profile not loaded');
+      setIsRefreshing(false);
+      return;
+    }
+    // Call fetchSchedule directly with saved closure
+    fetchSchedule(false);
+  }, [userProfile, isStudent, isTeacher, instructor, colors, today, fetchSchedule]);
+
+  // Get dates from semester range if available, otherwise use today + 6 days
   const dates = getDatesBetween(
-    new Date(today.getTime() - 3 * 86400000),
-    new Date(today.getTime() + 3 * 86400000)
+    semesterStartDate || new Date(today.getTime()),
+    semesterEndDate || new Date(today.getTime() + 6 * 86400000)
   );
 
   const selectedDateClasses = allClasses.filter((cls) => {
@@ -561,152 +743,74 @@ export const ViewScheduleScreen = () => {
     setSelectedDate(next);
   };
 
-  const renderClassCard = (
-    item: ScheduleClass,
-    index: number,
-    isWeekly: boolean = false
-  ) => {
-    const statusConfig = {
-      upcoming: {
-        badge: 'statusBadgeUpcoming',
-        text: 'statusTextUpcoming',
-        card: 'classCardUpcoming',
-      },
-      ongoing: {
-        badge: 'statusBadgeOngoing',
-        text: 'statusTextOngoing',
-        card: 'classCardOngoing',
-      },
-      completed: {
-        badge: 'statusBadgeCompleted',
-        text: 'statusTextCompleted',
-        card: 'classCardCompleted',
-      },
-    };
+  /**
+   * Scroll date scroller to show selected date at the start
+   * This runs when dates array or selectedDate changes
+   */
+  useEffect(() => {
+    if (!dateScrollRef.current || dates.length === 0) return;
 
-    const config = statusConfig[item.status];
+    // Find the index of the selected date in the dates array
+    const selectedIndex = dates.findIndex(
+      (date) =>
+        new Date(date).toDateString() === new Date(selectedDate).toDateString()
+    );
 
-    if (isWeekly) {
+    if (selectedIndex >= 0) {
+      // Each item is approximately 72 pixels (60 minWidth + 12 gap)
+      // Scroll so that selected date starts from the left
+      const scrollPosition = selectedIndex * 72;
+      setTimeout(() => {
+        dateScrollRef.current?.scrollTo({
+          x: scrollPosition,
+          animated: true,
+        });
+      }, 100); // Small delay to ensure ScrollView is ready
+    }
+  }, [dates, selectedDate]);
+
+  const renderDailyView = () => {
+    if (isLoading) {
+      console.log('[ViewScheduleScreen.renderDailyView] Still loading...');
       return (
-        <View
-          key={item.id}
-          style={[
-            styles.dayClassItem,
-            index === item.id.length - 1 && styles.dayClassItemLast,
-          ]}
-        >
-          <Text style={styles.dayClassTime}>{item.time}</Text>
-          <Text
-            style={styles.dayClassName}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            {item.title}
-          </Text>
-          <Text
-            style={[
-              styles.dayClassStatus,
-              styles[config.badge as keyof typeof styles],
-              styles[config.text as keyof typeof styles],
-            ]}
-          >
-            {item.status.charAt(0).toUpperCase()}
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.emptyStateText, { marginTop: 16 }]}>
+            Loading your schedule...
           </Text>
         </View>
       );
     }
+    console.log('[ViewScheduleScreen.renderDailyView] Rendering daily view with data');
 
-    return (
-      <Animated.View
-        key={item.id}
-        entering={FadeInUp.delay(index * 100)}
-        layout={Layout.springify()}
-        style={[
-          styles.classCard,
-          config.card === 'classCardUpcoming' && styles.classCardUpcoming,
-          config.card === 'classCardOngoing' && styles.classCardOngoing,
-          config.card === 'classCardCompleted' && styles.classCardCompleted,
-        ]}
-      >
-        <View style={styles.classHeader}>
-          <Text style={styles.classTitle} numberOfLines={2}>
-            {item.title}
+    if (error) {
+      return (
+        <View style={styles.emptyState}>
+          <MaterialIcons
+            name="error-outline"
+            size={64}
+            color={colors.danger}
+            style={styles.emptyStateIcon}
+          />
+          <Text style={[styles.emptyStateText, { color: colors.danger }]}>
+            {error}
           </Text>
-          <View
-            style={[
-              styles.statusBadge,
-              config.badge === 'statusBadgeUpcoming' && styles.statusBadgeUpcoming,
-              config.badge === 'statusBadgeOngoing' && styles.statusBadgeOngoing,
-              config.badge === 'statusBadgeCompleted' && styles.statusBadgeCompleted,
-            ]}
+          <Pressable
+            style={{
+              marginTop: 16,
+              paddingHorizontal: 24,
+              paddingVertical: 10,
+              backgroundColor: colors.primary,
+              borderRadius: 8,
+            }}
+            onPress={handleRefresh}
           >
-            <View
-              style={[
-                styles.statusDot,
-                {
-                  backgroundColor:
-                    item.status === 'upcoming'
-                      ? colors.warning
-                      : item.status === 'ongoing'
-                        ? colors.success
-                        : colors.textSecondary,
-                },
-              ]}
-            />
-            <Text
-              style={[
-                styles.statusText,
-                config.text === 'statusTextUpcoming' && styles.statusTextUpcoming,
-                config.text === 'statusTextOngoing' && styles.statusTextOngoing,
-                config.text === 'statusTextCompleted' && styles.statusTextCompleted,
-              ]}
-            >
-              {item.status === 'upcoming'
-                ? 'Upcoming'
-                : item.status === 'ongoing'
-                  ? 'Ongoing'
-                  : 'Completed'}
-            </Text>
-          </View>
+            <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>Retry</Text>
+          </Pressable>
         </View>
+      );
+    }
 
-        <View style={styles.classDetails}>
-          <View style={styles.detailRow}>
-            <MaterialIcons
-              name="schedule"
-              size={18}
-              color={colors.primary}
-              style={styles.detailIcon}
-            />
-            <Text style={styles.detailText}>
-              {item.time} - {item.duration} mins
-            </Text>
-          </View>
-          <View style={styles.detailRow}>
-            <MaterialIcons
-              name="location-on"
-              size={18}
-              color={colors.primary}
-              style={styles.detailIcon}
-            />
-            <Text style={styles.detailText}>{item.location}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <MaterialIcons
-              name="person"
-              size={18}
-              color={colors.primary}
-              style={styles.detailIcon}
-            />
-            <Text style={styles.detailText}>{item.instructor}</Text>
-          </View>
-          <Text style={styles.courseCode}>Course Code: {item.courseCode}</Text>
-        </View>
-      </Animated.View>
-    );
-  };
-
-  const renderDailyView = () => {
     if (selectedDateClasses.length === 0) {
       return (
         <View style={styles.emptyState}>
@@ -724,19 +828,88 @@ export const ViewScheduleScreen = () => {
       );
     }
 
+    console.log(
+      `[ViewScheduleScreen.renderDailyView] Rendering ${selectedDateClasses.length} sessions for ${formatDate(selectedDate)}`
+    );
+
     return (
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       >
-        {selectedDateClasses.map((item, index) =>
-          renderClassCard(item, index, false)
-        )}
+        {selectedDateClasses.map((_, index) => {
+          const session = allSessions.find((s) => s.id === selectedDateClasses[index].id);
+          if (!session) {
+            console.warn(
+              `[ViewScheduleScreen.renderDailyView] Session not found for class at index ${index}`
+            );
+            return null;
+          }
+
+          return (
+            <SessionBlock
+              key={session.id}
+              session={session}
+              isFirstItem={index === 0}
+              colors={colors}
+              index={index}
+            />
+          );
+        })}
       </ScrollView>
     );
   };
 
   const renderWeeklyView = () => {
+    if (isLoading) {
+      console.log('[ViewScheduleScreen.renderWeeklyView] Still loading...');
+      return (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.emptyStateText, { marginTop: 16 }]}>
+            Loading your schedule...
+          </Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      console.log('[ViewScheduleScreen.renderWeeklyView] Error state:', error);
+      return (
+        <View style={styles.emptyState}>
+          <MaterialIcons
+            name="error-outline"
+            size={64}
+            color={colors.danger}
+            style={styles.emptyStateIcon}
+          />
+          <Text style={[styles.emptyStateText, { color: colors.danger }]}>
+            {error}
+          </Text>
+          <Pressable
+            style={{
+              marginTop: 16,
+              paddingHorizontal: 24,
+              paddingVertical: 10,
+              backgroundColor: colors.primary,
+              borderRadius: 8,
+            }}
+            onPress={handleRefresh}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>Retry</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
     const weekStart = new Date(today);
     weekStart.setDate(today.getDate() - today.getDay());
 
@@ -745,10 +918,25 @@ export const ViewScheduleScreen = () => {
 
     const weekDates = getDatesBetween(weekStart, weekEnd);
 
+    console.log(
+      `[ViewScheduleScreen.renderWeeklyView] Rendering weekly view: ${weekStart.toDateString()} to ${weekEnd.toDateString()}, total days: ${weekDates.length}`
+    );
+    console.log(
+      `[ViewScheduleScreen.renderWeeklyView] Total sessions: ${allClasses.length}, grouped by day: ${Object.keys(groupedByDay).length} days with classes`
+    );
+
     return (
       <ScrollView
         contentContainerStyle={styles.weeklyContainer}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       >
         <Text style={styles.weekHeader}>This Week</Text>
 
@@ -757,6 +945,12 @@ export const ViewScheduleScreen = () => {
           dayKey.setHours(0, 0, 0, 0);
           const dayClasses = groupedByDay[dayKey.toISOString()] || [];
           const isDayToday = isDateToday(date);
+
+          if (dayIndex === 0) {
+            console.log(
+              `[ViewScheduleScreen.renderWeeklyView] Week sample - Day 0 (${getDayName(date)} ${formatDate(date)}): ${dayClasses.length} classes`
+            );
+          }
 
           return (
             <Animated.View
@@ -783,9 +977,33 @@ export const ViewScheduleScreen = () => {
 
               <View style={styles.dayClasses}>
                 {dayClasses.length > 0 ? (
-                  dayClasses.map((cls, idx) =>
-                    renderClassCard(cls, idx, true)
-                  )
+                  dayClasses.map((cls, idx) => (
+                    <View
+                      key={cls.id}
+                      style={[
+                        styles.dayClassItem,
+                        idx === dayClasses.length - 1 && styles.dayClassItemLast,
+                      ]}
+                    >
+                      <Text style={styles.dayClassTime}>{cls.time}</Text>
+                      <Text
+                        style={styles.dayClassName}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
+                        {cls.title}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.dayClassStatus,
+                          cls.status === 'upcoming' && styles.dayClassStatusUpcoming,
+                          cls.status === 'ongoing' && styles.dayClassStatusOngoing,
+                        ]}
+                      >
+                        {cls.status.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  ))
                 ) : (
                   <View style={styles.noDayClasses}>
                     <Text style={styles.noDayClassesText}>No classes</Text>
@@ -826,16 +1044,7 @@ export const ViewScheduleScreen = () => {
             />
           </Pressable>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-            <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.primaryLight, justifyContent: 'center', alignItems: 'center' }}>
-              <Image
-                source={require('@/assets/images/ATMA-LOGO.png')}
-                style={{ width: 40, height: 40, borderRadius: 10 }}
-                resizeMode="contain"
-              />
-            </View>
-            <Text style={styles.headerTitle}>My Schedule</Text>
-          </View>
+          <Text style={styles.headerTitle}>My Schedule</Text>
 
           <View style={styles.headerActions}>
             <Pressable style={styles.iconButton} onPress={() => router.push('/(main)/profile' as any)}>
@@ -898,11 +1107,13 @@ export const ViewScheduleScreen = () => {
             </Pressable>
 
             <ScrollView
+              ref={dateScrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
               style={styles.datesContainer}
               contentContainerStyle={{ gap: 12 }}
               scrollIndicatorInsets={{ right: 1 }}
+              scrollEventThrottle={16}
             >
               {dates.map((date) => {
                 const isSelected =
@@ -926,9 +1137,10 @@ export const ViewScheduleScreen = () => {
                     </Text>
                     <View
                       style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 20,
+                        width: 42,
+                        height: 42,
+                        borderRadius: 21,
+                        overflow: 'hidden',
                         justifyContent: 'center',
                         alignItems: 'center',
                         backgroundColor: isSelected
