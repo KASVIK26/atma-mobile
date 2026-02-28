@@ -9,7 +9,13 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "We need your location to verify your attendance at the classroom",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "We need your location to verify your attendance at the classroom",
+        "NSLocationAlwaysUsageDescription": "We need your location to verify your attendance at the classroom",
+        "NSMotionUsageDescription": "We need access to your device's barometer (pressure sensor) to verify your location on the correct floor"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +25,18 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.BODY_SENSORS",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.BODY_SENSORS"
+      ],
+      "package": "com.kasvik26.atmamobile"
     },
     "web": {
       "output": "static",
@@ -27,6 +44,7 @@
     },
     "plugins": [
       "expo-router",
+      "./plugins/withAndroidKeyboard",
       [
         "expo-splash-screen",
         {

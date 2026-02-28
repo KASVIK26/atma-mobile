@@ -1,11 +1,14 @@
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
+import { supabase } from '@/lib/supabase';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+    ActivityIndicator,
     Image,
     Pressable,
+    RefreshControl,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -206,53 +209,13 @@ const createStyles = (colors: any) =>
 interface AttendanceRecord {
   id: string;
   courseName: string;
+  courseCode: string;
   courseDate: string;
   courseTime: string;
-  status: 'present' | 'absent' | 'late';
-  device?: string;
-  location?: string;
-  checkInTime?: string;
-  lateMinutes?: number;
-  mapImage?: string;
+  status: 'present' | 'absent' | 'late' | 'excused';
+  markedAt: string;
+  validationScore?: number;
 }
-
-const generateAttendanceData = (): AttendanceRecord[] => {
-  return [
-    {
-      id: '1',
-      courseName: 'Advanced Calculus',
-      courseDate: 'Oct 26, 2023',
-      courseTime: '09:05 AM',
-      status: 'present',
-    },
-    {
-      id: '2',
-      courseName: 'Intro to Physics',
-      courseDate: 'Oct 25, 2023',
-      courseTime: '11:00 AM',
-      status: 'absent',
-    },
-    {
-      id: '3',
-      courseName: 'History of Art',
-      courseDate: 'Oct 24, 2023',
-      courseTime: '01:12 PM',
-      status: 'late',
-      device: 'iPhone 14 Pro',
-      location: 'Main Library',
-      checkInTime: '01:12 PM',
-      lateMinutes: 12,
-      mapImage: 'require data-location check in from university main library',
-    },
-    {
-      id: '4',
-      courseName: 'Organic Chemistry Lab',
-      courseDate: 'Oct 23, 2023',
-      courseTime: '02:01 PM',
-      status: 'present',
-    },
-  ];
-};
 
 export const StudentAttendanceHistoryScreen = () => {
   const router = useRouter();
@@ -262,14 +225,95 @@ export const StudentAttendanceHistoryScreen = () => {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [filterMode, setFilterMode] = useState<'week' | 'month'>('week');
-  const [expandedId, setExpandedId] = useState<string | null>('3');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     StatusBar.setBackgroundColor('transparent');
     StatusBar.setTranslucent(true);
   }, []);
 
-  const attendanceRecords = generateAttendanceData();
+  const fetchHistory = useCallback(async (isRefresh = false) => {
+    if (!userProfile?.id) return;
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+
+    try {
+      const now = new Date();
+      const startDate = new Date();
+      if (filterMode === 'week') {
+        startDate.setDate(now.getDate() - 7);
+      } else {
+        startDate.setDate(now.getDate() - 30);
+      }
+
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .select(`
+          id,
+          attendance_status,
+          marked_at,
+          validation_score,
+          lecture_sessions!inner(
+            session_date,
+            start_time,
+            courses!inner(
+              name,
+              code
+            )
+          )
+        `)
+        .eq('student_id', userProfile.id)
+        .gte('marked_at', startDate.toISOString())
+        .order('marked_at', { ascending: false });
+
+      if (error) {
+        console.error('[StudentHistory] Fetch error:', error);
+        return;
+      }
+
+      const mapped: AttendanceRecord[] = (data || []).map((row: any) => {
+        const session = row.lecture_sessions;
+        const course = session?.courses;
+        const markedDate = new Date(row.marked_at);
+        return {
+          id: row.id,
+          courseName: course?.name ?? 'Unknown Course',
+          courseCode: course?.code ?? '',
+          courseDate: session?.session_date
+            ? new Date(session.session_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            : markedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          courseTime: markedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+          status: row.attendance_status as AttendanceRecord['status'],
+          markedAt: row.marked_at,
+          validationScore: row.validation_score ? Number(row.validation_score) : undefined,
+        };
+      });
+
+      setRecords(mapped);
+    } catch (err) {
+      console.error('[StudentHistory] Unexpected error:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [userProfile?.id, filterMode]);
+
+  // Fetch on mount + whenever filter changes
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
+  // Re-fetch every time the screen comes into focus (e.g. after marking attendance)
+  useFocusEffect(
+    useCallback(() => {
+      fetchHistory();
+    }, [fetchHistory])
+  );
+
+  const attendanceRecords = records;
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -335,7 +379,7 @@ export const StudentAttendanceHistoryScreen = () => {
               resizeMode="contain"
             />
           </View>
-          <Text style={styles.brandText}>Atma Mobile</Text>
+          <Text style={styles.brandText}>ATMA</Text>
         </View>
         <Pressable style={{ width: 40, height: 40 }} onPress={handleProfilePress}>
           <Image
@@ -383,8 +427,30 @@ export const StudentAttendanceHistoryScreen = () => {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => fetchHistory(true)}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
       >
-        {attendanceRecords.map((record, index) => (
+        {loading ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 12 }}>Loading history...</Text>
+          </View>
+        ) : attendanceRecords.length === 0 ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
+            <MaterialIcons name="event-busy" size={48} color={colors.textSecondary} />
+            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.textPrimary, marginTop: 12 }}>No records found</Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4, textAlign: 'center' }}>
+              No attendance records for {filterMode === 'week' ? 'this week' : 'this month'}
+            </Text>
+          </View>
+        ) : (
+          attendanceRecords.map((record, index) => (
           <Animated.View key={record.id} entering={FadeInUp.delay(index * 100)}>
             <Pressable
               style={[
@@ -412,7 +478,8 @@ export const StudentAttendanceHistoryScreen = () => {
 
               <View style={styles.cardContent}>
                 <Text style={styles.courseName}>{record.courseName}</Text>
-                <Text style={styles.courseDate}>{record.courseDate} - {record.courseTime}</Text>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.primary, marginBottom: 2 }}>{record.courseCode}</Text>
+                <Text style={styles.courseDate}>{record.courseDate} · {record.courseTime}</Text>
               </View>
 
               <View
@@ -427,8 +494,8 @@ export const StudentAttendanceHistoryScreen = () => {
               </View>
             </Pressable>
 
-            {/* Detail Section for Late */}
-            {expandedId === record.id && record.status === 'late' && (
+            {/* Expanded detail: validation score */}
+            {expandedId === record.id && (
               <Animated.View
                 entering={FadeInUp}
                 style={[
@@ -438,41 +505,29 @@ export const StudentAttendanceHistoryScreen = () => {
                 ]}
               >
                 <View style={{ width: '100%' }}>
-                  <Text style={styles.detailTitle}>Check-in Details</Text>
-
+                  <Text style={styles.detailTitle}>Verification Details</Text>
                   <View style={styles.detailRow}>
                     <MaterialIcons name="schedule" size={16} color={colors.textSecondary} />
-                    <Text style={styles.detailLabel}>Check-in Time:</Text>
+                    <Text style={styles.detailLabel}>Marked at:</Text>
                     <Text style={styles.detailValue}>
-                      {record.checkInTime} ({record.lateMinutes} mins late)
+                      {new Date(record.markedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </Text>
                   </View>
-
-                  <View style={styles.detailRow}>
-                    <MaterialIcons name="smartphone" size={16} color={colors.textSecondary} />
-                    <Text style={styles.detailLabel}>Device:</Text>
-                    <Text style={styles.detailValue}>{record.device}</Text>
-                  </View>
-
-                  <View style={styles.detailRow}>
-                    <MaterialIcons name="location-on" size={16} color={colors.textSecondary} />
-                    <Text style={styles.detailLabel}>Location:</Text>
-                    <Text style={styles.detailValue}>{record.location}</Text>
-                  </View>
-
-                  <View style={styles.mapContainer}>
-                    <View style={{ flex: 1, backgroundColor: colors.backgroundAlt, justifyContent: 'center', alignItems: 'center' }}>
-                      <MaterialIcons name="map" size={48} color={colors.textSecondary} />
-                      <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 8 }}>
-                        Map Preview
+                  {record.validationScore !== undefined && (
+                    <View style={styles.detailRow}>
+                      <MaterialIcons name="verified" size={16} color={colors.textSecondary} />
+                      <Text style={styles.detailLabel}>Validation Score:</Text>
+                      <Text style={[styles.detailValue, { fontWeight: '700', color: record.validationScore >= 70 ? colors.success : colors.warning }]}>
+                        {record.validationScore}/100
                       </Text>
                     </View>
-                  </View>
+                  )}
                 </View>
               </Animated.View>
             )}
           </Animated.View>
-        ))}
+          ))
+        )}
       </ScrollView>
     </View>
   );

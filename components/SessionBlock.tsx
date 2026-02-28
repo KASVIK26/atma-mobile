@@ -1,4 +1,4 @@
-import { LectureSessionExtended, calculateDuration, formatTime, getStatusColor, getStatusLabel } from '@/lib/schedule-service';
+import { LectureSessionExtended, calculateDuration, formatTime } from '@/lib/schedule-service';
 import { MaterialIcons } from '@expo/vector-icons';
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -26,8 +26,26 @@ export const SessionBlock: React.FC<SessionBlockProps> = ({
   const duration = calculateDuration(session.start_time, session.end_time);
   const formattedStartTime = formatTime(session.start_time);
   const formattedEndTime = formatTime(session.end_time);
-  const statusLabel = getStatusLabel(session.session_status);
-  const statusColor = getStatusColor(session.session_status, colors);
+  
+  // Use time-dependent displayStatus instead of database session_status
+  const displayStatus = session.displayStatus || 'upcoming';
+  
+  // Get color based on displayStatus
+  const statusColor = (() => {
+    switch (displayStatus) {
+      case 'completed':
+        return colors.textSecondary;
+      case 'ongoing':
+        return colors.success;
+      case 'upcoming':
+        return colors.primary;
+      default:
+        return colors.textSecondary;
+    }
+  })();
+  
+  // Get label based on displayStatus
+  const statusLabel = displayStatus.toUpperCase();
 
   // Get instructor names
   const instructorNames = session.instructors
@@ -40,10 +58,6 @@ export const SessionBlock: React.FC<SessionBlockProps> = ({
       ? `${session.room.room_name || session.room.room_number}, ${session.room.building.name}`
       : session.room.room_name || session.room.room_number
     : 'No room assigned';
-
-  console.log(
-    `[SessionBlock] Rendering session ${session.course?.name || 'Course'} - Room: ${roomInfo}, Building: ${session.room?.building?.name || 'N/A'}`
-  );
 
   const showTOTPIndicator = session.totp_required && session.session_status === 'active';
 

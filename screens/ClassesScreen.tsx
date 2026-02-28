@@ -1,9 +1,11 @@
 import { TimelineClassCard } from '@/components/TimelineClassCard';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
+import { formatTime, getTodaysClassesWithStatus } from '@/lib/dashboard-service';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+    ActivityIndicator,
     Image,
     Pressable,
     ScrollView,
@@ -89,33 +91,7 @@ const createStyles = (colors: any) =>
   });
 
 const classesData = [
-  {
-    time: '09:00 AM',
-    courseCode: 'PSY-101',
-    courseName: 'Introduction to Psychology',
-    room: 'Room 304',
-    instructor: 'Prof. Ada Lovelace',
-    duration: '90 min',
-    status: 'on-time' as const,
-  },
-  {
-    time: '11:00 AM',
-    courseCode: 'CS-301',
-    courseName: 'Advanced Algorithms',
-    room: 'Room 112',
-    instructor: 'Prof. Alan Turing',
-    duration: '50 min',
-    status: 'cancelled' as const,
-  },
-  {
-    time: '12:00 PM',
-    courseCode: 'MATH-205',
-    courseName: 'Linear Algebra',
-    room: 'Hall A',
-    instructor: 'Prof. Emmy Noether',
-    duration: '60 min',
-    status: 'upcoming' as const,
-  },
+  // This will be populated with real data from database
 ];
 
 export const ClassesScreen = () => {
@@ -124,6 +100,35 @@ export const ClassesScreen = () => {
   const { colors, theme } = useTheme();
   const { userProfile } = useAuth();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  
+  const [classes, setClasses] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchClasses = async () => {
+      if (!userProfile?.id || !userProfile?.university_id) {
+        console.warn('[ClassesScreen] Missing user profile data');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const classesWithStatus = await getTodaysClassesWithStatus(
+          userProfile.id,
+          userProfile.university_id
+        );
+        
+        setClasses(classesWithStatus);
+        console.log('[ClassesScreen] Loaded', classesWithStatus.length, 'classes');
+      } catch (error) {
+        console.error('[ClassesScreen] Error fetching classes:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchClasses();
+  }, [userProfile?.id, userProfile?.university_id]);
 
   useEffect(() => {
     StatusBar.setBackgroundColor('transparent');
@@ -156,7 +161,7 @@ export const ClassesScreen = () => {
                 resizeMode="contain"
               />
             </View>
-            <Text style={styles.headerTitle}>Atma Mobile</Text>
+            <Text style={styles.headerTitle}>ATMA</Text>
           </View>
           <Pressable style={styles.profileButton} onPress={handleProfilePress}>
             <Image
@@ -186,21 +191,65 @@ export const ClassesScreen = () => {
 
         {/* Timeline Classes */}
         <Animated.View entering={FadeInUp.delay(200)} style={styles.timelineContainer}>
-          {classesData.map((classItem, index) => (
-            <TimelineClassCard
-              key={`${classItem.courseCode}-${index}`}
-              courseCode={classItem.courseCode}
-              courseName={classItem.courseName}
-              room={classItem.room}
-              instructor={classItem.instructor}
-              duration={classItem.duration}
-              status={classItem.status}
-              colors={colors}
-              theme={theme}
-              showConnector={index < classesData.length - 1}
-              delay={300 + index * 100}
-            />
-          ))}
+          {isLoading ? (
+            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : classes.length > 0 ? (
+            classes.map((classItem, index) => {
+              // Calculate duration
+              const [startHour, startMin] = classItem.start_time.split(':');
+              const [endHour, endMin] = classItem.end_time.split(':');
+              const startTotalMin = parseInt(startHour) * 60 + parseInt(startMin);
+              const endTotalMin = parseInt(endHour) * 60 + parseInt(endMin);
+              const durationMin = endTotalMin - startTotalMin;
+              const duration = durationMin > 0 ? `${durationMin} min` : 'N/A';
+
+              // Get instructor names
+              const instructorName = classItem.instructor_names && classItem.instructor_names.length > 0
+                ? classItem.instructor_names.join(', ')
+                : 'Instructor';
+
+              // Get building info
+              const building = classItem.room?.building?.name ? ` - ${classItem.room.building.name}` : '';
+
+              return (
+                <TimelineClassCard
+                  key={`${classItem.id}-${index}`}
+                  courseCode={classItem.course?.code || 'Unknown'}
+                  courseName={classItem.course?.name || 'Unknown Course'}
+                  room={classItem.room?.room_name || classItem.room?.room_number || 'TBA'}
+                  building={building}
+                  instructor={instructorName}
+                  duration={duration}
+                  status={classItem.status}
+                  colors={colors}
+                  theme={theme}
+                  showConnector={index < classes.length - 1}
+                  delay={300 + index * 100}
+                  time={formatTime(classItem.start_time)}
+                  totpCode={classItem.totp_code}
+                  codeShared={classItem.totp_code_shared}
+                  attendanceMarkingEnabled={classItem.attendance_marking_enabled}
+                  sessionId={classItem.id}
+                  studentId={userProfile?.id}
+                  universityId={userProfile?.university_id}
+                  onAttendanceMarked={(success) => {
+                    if (success) {
+                      // Optionally refresh the list
+                      console.log('[ClassesScreen] Attendance marked, could refresh list here');
+                    }
+                  }}
+                />
+              );
+            })
+          ) : (
+            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+              <Text style={{ color: colors.textSecondary, fontSize: 14 }}>
+                No classes scheduled for today
+              </Text>
+            </View>
+          )}
         </Animated.View>
       </ScrollView>
     </View>

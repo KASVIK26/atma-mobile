@@ -56,6 +56,18 @@ export default function MainLayout() {
             title: 'View Schedule',
           }}
         />
+        <Stack.Screen
+          name="create-class"
+          options={{
+            title: 'Create Class',
+          }}
+        />
+        <Stack.Screen
+          name="start-attendance"
+          options={{
+            title: 'Start Attendance',
+          }}
+        />
       </Stack>
 
       {showTabBar && <BottomTabBar />}

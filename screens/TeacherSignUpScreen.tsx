@@ -10,14 +10,13 @@ import {
     Alert,
     Dimensions,
     KeyboardAvoidingView,
-    Platform,
     Pressable,
     ScrollView,
     StatusBar,
     StyleSheet,
     Text,
     TextInput,
-    View,
+    View
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -632,8 +631,7 @@ export default function TeacherSignUpScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 60}
+      behavior="padding"
     >
       <StatusBar barStyle="light-content" backgroundColor={colors.background} translucent />
 

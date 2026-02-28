@@ -2,6 +2,7 @@ import { SessionBlock } from '@/components/SessionBlock';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { getSemesterDates, getStudentSchedule, getTeacherSchedule, LectureSessionExtended } from '@/lib/schedule-service';
+import supabase from '@/lib/supabase';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -457,8 +458,8 @@ const convertToScheduleClass = (session: LectureSessionExtended, colors: any): S
     ?.map((ins) => ins.name)
     .join(', ') || 'No instructor';
 
-  const status = session.session_status === 'active' ? 'ongoing' : 
-                 session.session_status === 'scheduled' ? 'upcoming' : 'completed';
+  // Use time-dependent displayStatus calculated in service layer
+  const status = session.displayStatus || 'upcoming';
 
   return {
     id: session.id,
@@ -641,39 +642,88 @@ export const ViewScheduleScreen = () => {
 
   /**
    * Fetch semester dates when profile loads
+   * For students: use semester_id from profile
+   * For teachers: use academic calendar or default to 6 months range
    */
   useEffect(() => {
-    if (!userProfile?.semester_id) {
-      console.warn('[ViewScheduleScreen] No semester_id in user profile');
-      return;
-    }
-
     const fetchSemesterDates = async () => {
-      console.log('[ViewScheduleScreen] 📚 Fetching semester dates for:', userProfile.semester_id.substring(0, 8) + '...');
-      const semesterDates = await getSemesterDates(userProfile.semester_id!);
-      
-      if (semesterDates) {
-        const start = new Date(semesterDates.startDate);
-        const end = new Date(semesterDates.endDate);
+      // For student: fetch from their specific semester
+      if (isStudent && userProfile?.semester_id) {
+        console.log('[ViewScheduleScreen] 📚 Fetching semester dates for student:', userProfile.semester_id.substring(0, 8) + '...');
+        const semesterDates = await getSemesterDates(userProfile.semester_id!);
+        
+        if (semesterDates) {
+          const start = new Date(semesterDates.startDate);
+          const end = new Date(semesterDates.endDate);
+          start.setHours(0, 0, 0, 0);
+          end.setHours(0, 0, 0, 0);
+          
+          setSemesterStartDate(start);
+          setSemesterEndDate(end);
+          
+          // Set default selected date to today if within semester range, else to semester start
+          if (today >= start && today <= end) {
+            setSelectedDate(today);
+          } else {
+            setSelectedDate(start);
+          }
+          
+          console.log('[ViewScheduleScreen] ✓ Semester dates set:', semesterDates.startDate, 'to', semesterDates.endDate);
+        }
+      } 
+      // For teacher: use academic calendar or fallback to reasonable range
+      else if (isTeacher) {
+        console.log('[ViewScheduleScreen] 📚 Using default date range for teacher');
+        
+        // Try to fetch academic calendar for the university
+        try {
+          const { data: calendar, error } = await supabase
+            .from('academic_calendar')
+            .select('semester_start_date, semester_end_date')
+            .eq('university_id', userProfile?.university_id)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (!error && calendar) {
+            const start = new Date(calendar.semester_start_date);
+            const end = new Date(calendar.semester_end_date);
+            start.setHours(0, 0, 0, 0);
+            end.setHours(0, 0, 0, 0);
+            
+            setSemesterStartDate(start);
+            setSemesterEndDate(end);
+            setSelectedDate(today);
+            
+            console.log('[ViewScheduleScreen] ✓ Teacher dates from academic calendar:', calendar.semester_start_date, 'to', calendar.semester_end_date);
+            return;
+          }
+        } catch (err) {
+          console.warn('[ViewScheduleScreen] Could not fetch academic calendar, using default range');
+        }
+
+        // Fallback: Set default range (6 months from today)
+        const start = new Date(today);
+        start.setMonth(today.getMonth() - 3);
         start.setHours(0, 0, 0, 0);
+        
+        const end = new Date(today);
+        end.setMonth(today.getMonth() + 3);
         end.setHours(0, 0, 0, 0);
         
         setSemesterStartDate(start);
         setSemesterEndDate(end);
+        setSelectedDate(today);
         
-        // Set default selected date to today if within semester range, else to semester start
-        if (today >= start && today <= end) {
-          setSelectedDate(today);
-        } else {
-          setSelectedDate(start);
-        }
-        
-        console.log('[ViewScheduleScreen] ✓ Semester dates set:', semesterDates.startDate, 'to', semesterDates.endDate);
+        console.log('[ViewScheduleScreen] ✓ Teacher using default date range:', start.toDateString(), 'to', end.toDateString());
       }
     };
 
+    if (!userProfile) return;
+
     fetchSemesterDates();
-  }, [userProfile?.semester_id]);
+  }, [userProfile?.id, isStudent, isTeacher]);
 
   /**
    * Handle refresh (pull-down)
@@ -781,7 +831,6 @@ export const ViewScheduleScreen = () => {
         </View>
       );
     }
-    console.log('[ViewScheduleScreen.renderDailyView] Rendering daily view with data');
 
     if (error) {
       return (

@@ -3,12 +3,15 @@ import { StatsCard } from '@/components/StatsCard';
 import { UpcomingClassCard } from '@/components/UpcomingClassCard';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { MaterialIcons } from '@expo/vector-icons';
+import { DashboardStats, formatTime, getTodaysDashboardData } from '@/lib/dashboard-service';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+    ActivityIndicator,
     Image,
     Pressable,
+    RefreshControl,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -44,15 +47,20 @@ const createStyles = (colors: any, theme: string) =>
     logoBg: {
       width: 40,
       height: 40,
-      borderRadius: 20,
+      borderRadius: 10,
       backgroundColor: colors.primaryLight,
       justifyContent: 'center',
       alignItems: 'center',
     },
-    schoolIcon: {
+    logoImage: {
       width: 40,
       height: 40,
-      borderRadius: 20,
+      borderRadius: 10,
+    },
+    headerBrand: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.textPrimary,
     },
     headerActions: {
       flexDirection: 'row',
@@ -108,6 +116,7 @@ const createStyles = (colors: any, theme: string) =>
     },
     quickActionsContainer: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       justifyContent: 'space-between',
       gap: 12,
       marginVertical: 16,
@@ -121,42 +130,98 @@ const createStyles = (colors: any, theme: string) =>
     },
   });
 
-
-const teacherClasses = [
-  {
-    time: '02:00 PM',
-    courseCode: 'CS-301',
-    courseName: 'Software Engineering',
-    location: 'Room 404B',
-    isPrimary: true,
-  },
-  {
-    time: '04:00 PM',
-    courseCode: 'DS-212',
-    courseName: 'Data Structures',
-    location: 'Hall A',
-    isPrimary: false,
-  },
-  {
-    time: '05:30 PM',
-    courseCode: 'AI-401',
-    courseName: 'Intro to Artificial Intelligence',
-    location: 'Room 201C',
-    isPrimary: false,
-  },
-];
-
-const stats = [
-  { icon: 'event-available', number: '5', label: 'Total Classes', color: '#10B981' },
-  { icon: 'done-all', number: '2', label: 'Completed Sessions', color: '#2563EB' },
+const defaultStats = [
+  { icon: 'event-available', number: '0', label: 'Total Classes', color: '#10B981' },
+  { icon: 'done-all', number: '0', label: 'Completed Sessions', color: '#2563EB' },
 ];
 
 export const TeacherDashboard = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, theme } = useTheme();
-  const { userProfile } = useAuth();
+  const { userProfile, instructor } = useAuth();
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
+  const [dashboardData, setDashboardData] = useState<DashboardStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [stats, setStats] = useState(defaultStats);
+
+  // Memoized fetch function that can be called from multiple places
+  const fetchDashboardData = useCallback(async () => {
+    if (!instructor?.id || !userProfile?.university_id) {
+      console.warn('[TeacherDashboard] Missing instructor data');
+      setIsLoading(false);
+      setIsRefreshing(false);
+      return;
+    }
+
+    try {
+      const data = await getTodaysDashboardData(
+        instructor.id,
+        userProfile.university_id,
+        'teacher'  // Explicitly pass teacher role
+      );
+
+      if (data) {
+        setDashboardData(data);
+        // Update stats with real data
+        setStats([
+          {
+            icon: 'event-available',
+            number: String(data.totalClasses),
+            label: 'Total Classes',
+            color: '#10B981',
+          },
+          {
+            icon: 'done-all',
+            number: String(data.attendanceStreak), // This returns completed sessions count
+            label: 'Completed Sessions',
+            color: '#2563EB',
+          },
+        ]);
+        console.log('[TeacherDashboard] Dashboard data loaded successfully');
+      }
+    } catch (error) {
+      console.error('[TeacherDashboard] Error fetching dashboard data:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [instructor?.id, userProfile?.university_id]);
+
+  // Initial data load on mount
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  // Auto-refresh when screen comes into focus (e.g., after creating special class)
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[TeacherDashboard] Screen focused - auto-refreshing');
+      setIsRefreshing(true);
+      fetchDashboardData();
+    }, [fetchDashboardData])
+  );
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    fetchDashboardData();
+  };
+
+  // Get time-based greeting
+  const getTimeBasedGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) {
+      return 'Good morning';
+    } else if (hour < 18) {
+      return 'Good afternoon';
+    } else {
+      return 'Good evening';
+    }
+  };
+
+  const greeting = getTimeBasedGreeting();
+  const teacherName = userProfile?.first_name || 'Teacher';
 
   useEffect(() => {
     StatusBar.setBackgroundColor('transparent');
@@ -172,16 +237,16 @@ export const TeacherDashboard = () => {
   };
 
   const handleAttendance = () => {
-    router.push('/(main)/history' as any);
+    router.push('/(main)/start-attendance' as any);
   };
 
-  const today = new Date();
-  const dateString = today.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  const handleCreateClass = () => {
+    router.push('/(main)/create-class' as any);
+  };
+
+  const handleAttendanceHistory = () => {
+    router.push('/(main)/history' as any);
+  };
 
   return (
     <View style={styles.container}>
@@ -199,17 +264,15 @@ export const TeacherDashboard = () => {
         <View style={styles.headerTop}>
           <View style={styles.logoContainer}>
             <View style={styles.logoBg}>
-              <MaterialIcons name="school" size={24} color={colors.primary} />
+              <Image
+                source={require('@/assets/images/ATMA-LOGO.png')}
+                style={styles.logoImage}
+                resizeMode="cover"
+              />
             </View>
+            <Text style={styles.headerBrand}>ATMA</Text>
           </View>
           <View style={styles.headerActions}>
-            <Pressable style={styles.iconButton}>
-              <MaterialIcons
-                name="search"
-                size={24}
-                color={colors.textSecondary}
-              />
-            </Pressable>
             <Pressable style={styles.iconButton} onPress={handleProfilePress}>
               <Image
                 source={
@@ -230,22 +293,110 @@ export const TeacherDashboard = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         scrollIndicatorInsets={{ right: 1 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            progressBackgroundColor={colors.cardBackground}
+          />
+        }
       >
-        {/* Headline */}
+        {/* Greeting */}
         <Animated.View entering={FadeInUp.delay(100)}>
-          {(() => {
-            const hour = new Date().getHours();
-            let greeting = 'Good morning';
-            if (hour >= 12 && hour < 18) greeting = 'Good afternoon';
-            else if (hour >= 18) greeting = 'Good evening';
-            const firstName = userProfile?.first_name || 'Teacher';
-            return <Text style={styles.headline}>{greeting}, {firstName}</Text>;
-          })()}
-          <Text style={styles.date}>Today is {dateString}</Text>
+          <Text style={styles.headline}>{greeting}, {teacherName}</Text>
         </Animated.View>
 
-        {/* Your day at a glance - Stats */}
-        <Animated.View entering={FadeInUp.delay(200)}>
+        {/* Quick Actions */}
+        <Animated.View
+          entering={FadeInUp.delay(200)}
+          style={styles.quickActionsContainer}
+        >
+          <View style={{ flexDirection: 'row', flex: 1, gap: 12 }}>
+            <QuickActionButton
+              icon="qr-code-scanner"
+              label="Start Attendance"
+              onPress={handleAttendance}
+              colors={colors}
+            />
+            <QuickActionButton
+              icon="calendar-month"
+              label="View Schedule"
+              onPress={handleViewSchedule}
+              colors={colors}
+            />
+            <QuickActionButton
+              icon="add-circle"
+              label="Create Class"
+              onPress={handleCreateClass}
+              colors={colors}
+            />
+            <QuickActionButton
+              icon="history"
+              label="Attendance History"
+              onPress={handleAttendanceHistory}
+              colors={colors}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Upcoming Classes Section */}
+        <Animated.View entering={FadeInUp.delay(300)}>
+          <Text style={styles.sectionTitle}>Ongoing & Upcoming Today</Text>
+          {isLoading ? (
+            <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : (() => {
+            // Filter to show only ongoing and upcoming classes (exclude completed)
+            const filteredSessions = dashboardData?.upcomingSessions?.filter((session) => {
+              const now = new Date();
+              const today = new Date().toISOString().split('T')[0];
+              const [endHours, endMinutes] = session.end_time.split(':');
+              const sessionEndTime = new Date(`${today}T${endHours}:${endMinutes}:00`);
+              // Only show classes that haven't ended yet
+              return sessionEndTime > now;
+            }) || [];
+
+            return filteredSessions.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.carouselContent}
+                scrollIndicatorInsets={{ bottom: 1 }}
+              >
+                {filteredSessions.map((session, index) => {
+                  const roomName = session.room?.room_name || session.room?.room_number || 'TBA';
+                  const buildingName = session.room?.building?.name ? ` - ${session.room.building.name}` : '';
+                  const location = `${roomName}${buildingName}`;
+
+                  return (
+                    <UpcomingClassCard
+                      key={`${session.id}-${index}`}
+                      time={formatTime(session.start_time)}
+                      courseCode={session.course?.code || 'N/A'}
+                      courseName={session.course?.name || 'Unknown Course'}
+                      location={location}
+                      colors={colors}
+                      theme={theme}
+                      isPrimary={index === 0}
+                      delay={400 + index * 100}
+                    />
+                  );
+                })}
+              </ScrollView>
+            ) : (
+              <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 14 }}>
+                  No ongoing or upcoming classes today
+                </Text>
+              </View>
+            );
+          })()}
+        </Animated.View>
+
+        {/* Stats Section */}
+        <Animated.View entering={FadeInUp.delay(500)}>
           <Text style={styles.sectionTitle}>Your day at a glance</Text>
           <View style={styles.statsGrid}>
             {stats.map((stat, index) => (
@@ -260,56 +411,6 @@ export const TeacherDashboard = () => {
               </View>
             ))}
           </View>
-        </Animated.View>
-
-        {/* Quick Actions */}
-        <Animated.View
-          entering={FadeInUp.delay(300)}
-          style={styles.quickActionsContainer}
-        >
-          <QuickActionButton
-            icon="qr-code-scanner"
-            label="Start Attendance"
-            onPress={handleAttendance}
-            colors={colors}
-          />
-          <QuickActionButton
-            icon="calendar-month"
-            label="View Schedule"
-            onPress={handleViewSchedule}
-            colors={colors}
-          />
-          <QuickActionButton
-            icon="add-circle"
-            label="Create Class"
-            onPress={() => {}}
-            colors={colors}
-          />
-        </Animated.View>
-
-        {/* Upcoming Classes */}
-        <Animated.View entering={FadeInUp.delay(400)}>
-          <Text style={styles.sectionTitle}>Upcoming classes</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.carouselContent}
-            scrollIndicatorInsets={{ bottom: 1 }}
-          >
-            {teacherClasses.map((classItem, index) => (
-              <UpcomingClassCard
-                key={`${classItem.courseCode}-${index}`}
-                time={classItem.time}
-                courseCode={classItem.courseCode}
-                courseName={classItem.courseName}
-                location={classItem.location}
-                colors={colors}
-                theme={theme}
-                isPrimary={classItem.isPrimary}
-                delay={500 + index * 100}
-              />
-            ))}
-          </ScrollView>
         </Animated.View>
 
         <View style={styles.spacer} />

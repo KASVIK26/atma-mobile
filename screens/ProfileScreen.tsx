@@ -224,7 +224,7 @@ export const ProfileScreen = () => {
                 resizeMode="contain"
               />
             </View>
-            <Text style={styles.headerTitle}>Atma Mobile</Text>
+            <Text style={styles.headerTitle}>ATMA</Text>
           </View>
         </View>
       </Animated.View>

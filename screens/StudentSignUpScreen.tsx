@@ -960,7 +960,7 @@ export function StudentSignUpScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior="padding"
       style={styles.container}
     >
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />

@@ -123,6 +123,7 @@ export interface LectureSessionExtended extends LectureSession {
     id: string;
     name: string;
   }>;
+  displayStatus?: 'completed' | 'ongoing' | 'upcoming';
 }
 
 /**
@@ -139,6 +140,53 @@ export interface TOTPSession {
   last_refresh_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Calculate display status for a session based on current time
+ * Returns 'completed', 'ongoing', or 'upcoming'
+ * @param session - Lecture session with date and time info
+ * @returns Display status
+ */
+export function calculateSessionDisplayStatus(
+  session: LectureSession
+): 'completed' | 'ongoing' | 'upcoming' {
+  const now = new Date();
+  const today = now.toISOString().split('T')[0]; // YYYY-MM-DD format
+  const currentTimeStr = now.toTimeString().substring(0, 8); // HH:mm:ss format
+
+  // Session is in the past → completed
+  if (session.session_date < today) {
+    return 'completed';
+  }
+
+  // Session is in the future → upcoming
+  if (session.session_date > today) {
+    return 'upcoming';
+  }
+
+  // Session is today → check time
+  // Get the end time (prefer actual_end_time if it exists)
+  const endTime = session.actual_end_time || session.end_time || session.scheduled_end_time;
+  const startTime = session.scheduled_start_time || session.start_time;
+
+  if (!endTime || !startTime) {
+    // If times are not available, assume upcoming
+    return 'upcoming';
+  }
+
+  // If current time is past end time → completed
+  if (currentTimeStr > endTime) {
+    return 'completed';
+  }
+
+  // If current time is before start time → upcoming
+  if (currentTimeStr < startTime) {
+    return 'upcoming';
+  }
+
+  // Otherwise → ongoing
+  return 'ongoing';
 }
 
 /**
@@ -329,17 +377,14 @@ export async function getStudentSchedule(
           instructors,
           course: session.courses,
           room: session.rooms,
+          displayStatus: calculateSessionDisplayStatus(session),
         };
 
         return extendedSession;
       })
     );
 
-    console.log(`[Schedule Service]   ✓ Enrichment complete`);
-    console.log(`[Schedule Service] ✓ Successfully retrieved ${extendedSessions.length} sessions`);
-    console.log(
-      `[Schedule Service] ========================================`
-    );
+    console.log(`[Schedule Service] ✓ Retrieved ${extendedSessions.length} sessions with displayStatus`);
 
     // Cache the result
     scheduleCache.set(cacheKey, {
@@ -357,14 +402,6 @@ export async function getStudentSchedule(
   }
 }
 
-/**
- * Fetch lecture sessions for a teacher
- * Filters by: instructor_ids array contains instructorId
- * @param instructorId - Instructor ID
- * @param universityId - University ID
- * @param startDate - Start date (YYYY-MM-DD)
- * @param endDate - End date (YYYY-MM-DD)
- */
 export async function getTeacherSchedule(
   instructorId: string,
   universityId: string,
@@ -372,11 +409,41 @@ export async function getTeacherSchedule(
   endDate: string
 ): Promise<{ sessions: LectureSessionExtended[] | null; error: Error | null }> {
   try {
-    console.log(`[Schedule Service] Fetching teacher schedule for: ${instructorId.substring(0, 8)}...`);
-    console.log(`[Schedule Service] University: ${universityId.substring(0, 8)}...`);
-    console.log(`[Schedule Service] Date range: ${startDate} to ${endDate}`);
+    // Check cache first
+    const cacheKey = `teacher-${instructorId}-${startDate}-${endDate}`;
+    const cached = scheduleCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      console.log('[Schedule Service] ✓ Teacher schedule data from cache');
+      return { sessions: cached.data, error: null };
+    }
 
-    // Get lecture sessions where instructor_ids contains this instructor
+    console.log(
+      `[Schedule Service] ========================================`
+    );
+    console.log(
+      `[Schedule Service] 🔍 TEACHER SCHEDULE QUERY PARAMETERS:`
+    );
+    console.log(
+      `[Schedule Service]   - instructorId: ${instructorId}`
+    );
+    console.log(
+      `[Schedule Service]   - universityId: ${universityId}`
+    );
+    console.log(
+      `[Schedule Service]   - dateRange: ${startDate} to ${endDate}`
+    );
+    console.log(
+      `[Schedule Service] ========================================`
+    );
+
+    // Step 1: Get lecture sessions for this university in the date range
+    console.log(
+      `[Schedule Service] STEP 1: Querying lecture_sessions for instructor...`
+    );
+    console.log(
+      `[Schedule Service]   Query: SELECT * FROM lecture_sessions WHERE university_id = '${universityId}' AND is_active = true AND is_cancelled = false AND session_date BETWEEN '${startDate}' AND '${endDate}'`
+    );
+    
     const { data: sessions, error: sessionsError } = await supabase
       .from('lecture_sessions')
       .select(
@@ -417,60 +484,120 @@ export async function getTeacherSchedule(
       .order('session_date', { ascending: true })
       .order('start_time', { ascending: true });
 
-    if (sessionsError) throw sessionsError;
+    if (sessionsError) {
+      console.error(
+        `[Schedule Service] ❌ CRITICAL: Query error! This is likely an RLS policy issue.`,
+        sessionsError
+      );
+      console.error('[Schedule Service] Error details:', {
+        message: sessionsError.message,
+        code: sessionsError.code,
+        hint: sessionsError.hint,
+      });
+      throw sessionsError;
+    }
 
-    console.log(`[Schedule Service] Retrieved ${sessions?.length || 0} total lecture sessions`);
+    console.log(
+      `[Schedule Service]   ✓ Query result: Found ${sessions?.length || 0} total lecture sessions`
+    );
 
-    // Filter sessions where instructor_ids contains this instructor
+    if (!sessions || sessions.length === 0) {
+      console.warn('[Schedule Service]   ⚠️ No sessions returned from database!');
+      console.warn('[Schedule Service]   Possible causes:');
+      console.warn('[Schedule Service]     1. RLS policy blocks read access to lecture_sessions');
+      console.warn('[Schedule Service]     2. No lecture_sessions exist for this university/date range');
+      console.warn('[Schedule Service]     3. All sessions have is_active=false or is_cancelled=true');
+      console.warn('[Schedule Service]   → Run testTeacherScheduleAccess() to diagnose');
+    }
+
+    // Step 2: Filter sessions where instructor_ids contains this instructor
+    console.log(
+      `[Schedule Service] STEP 2: Filtering sessions where instructor_ids contains: ${instructorId.substring(0, 8)}...`
+    );
     const filteredSessions = (sessions || []).filter((session: any) =>
-      session.instructor_ids && session.instructor_ids.includes(instructorId)
+      session.instructor_ids && Array.isArray(session.instructor_ids) && session.instructor_ids.includes(instructorId)
     );
 
     console.log(
-      `[Schedule Service] After filtering by instructor: ${filteredSessions.length} sessions`
+      `[Schedule Service]   ✓ Filter result: ${filteredSessions.length} sessions assigned to this instructor`
     );
     if (filteredSessions.length > 0) {
       console.log(
-        `[Schedule Service] Sample sessions (first 2): ${JSON.stringify(
+        `[Schedule Service]   Sample sessions (first 2): ${JSON.stringify(
           filteredSessions.slice(0, 2).map((s: any) => ({
+            id: s.id,
             course: s.courses?.name,
+            code: s.courses?.code,
             date: s.session_date,
-            time: s.start_time,
+            time: `${s.start_time} - ${s.end_time}`,
+            room: s.rooms?.room_name || s.rooms?.room_number,
+            building: s.rooms?.building?.name,
             status: s.session_status,
+            instructorCount: s.instructor_ids?.length || 0,
           })),
           null,
           2
         )}`
       );
+    } else {
+      console.warn(
+        `[Schedule Service]   ⚠️  NO SESSIONS FOUND - Instructor may not have any assigned lecture sessions`
+      );
     }
 
-    // Fetch instructor names for instructor_ids array
+    // Step 3: Fetch instructor names for instructor_ids array
+    console.log('[Schedule Service] STEP 3: Enriching sessions with instructor details...');
     const extendedSessions = await Promise.all(
-      filteredSessions.map(async (session: any) => {
+      filteredSessions.map(async (session: any, idx: number) => {
         let instructors: Array<{ id: string; name: string }> | undefined;
 
         if (session.instructor_ids && session.instructor_ids.length > 0) {
-          const { data: instructorData } = await supabase
+          if (idx === 0) {
+            console.log(
+              `[Schedule Service]   Fetching instructor names for ${session.instructor_ids.length} instructors...`
+            );
+          }
+          const { data: instructorData, error: instructorError } = await supabase
             .from('instructors')
             .select('id, name')
             .in('id', session.instructor_ids);
 
+          if (instructorError) {
+            console.warn(
+              `[Schedule Service] Error fetching instructors for session ${session.id}:`,
+              instructorError
+            );
+          }
+
           instructors = instructorData || [];
         }
 
-        return {
+        const extendedSession = {
           ...session,
           instructors,
           course: session.courses,
           room: session.rooms,
+          displayStatus: calculateSessionDisplayStatus(session),
         };
+
+        return extendedSession;
       })
     );
 
-    console.log(`[Schedule Service] ✓ Successfully retrieved ${extendedSessions.length} sessions`);
+    console.log(`[Schedule Service] ✓ Retrieved ${extendedSessions.length} sessions with displayStatus`);
+
+    // Cache the result
+    scheduleCache.set(cacheKey, {
+      data: extendedSessions as LectureSessionExtended[],
+      timestamp: Date.now(),
+    });
+
     return { sessions: extendedSessions as LectureSessionExtended[], error: null };
   } catch (error) {
     console.error('[Schedule Service] ✗ Error fetching teacher schedule:', error);
+    console.log(
+      `[Schedule Service] ========================================`
+    );
     return { sessions: null, error: error as Error };
   }
 }
@@ -595,5 +722,184 @@ export function getStatusLabel(status: string): string {
       return 'Rescheduled';
     default:
       return status;
+  }
+}
+/**
+ * DIAGNOSTIC FUNCTION: Test teacher schedule access
+ * Use this to debug why teacher schedule returns 0 sessions
+ * Call from console: testTeacherScheduleAccess('userId', 'universityId')
+ */
+export async function testTeacherScheduleAccess(
+  userId: string,
+  universityId: string
+): Promise<void> {
+  console.log(`\n${'='.repeat(80)}`);
+  console.log('🧪 TEACHER SCHEDULE ACCESS DIAGNOSTIC TEST');
+  console.log(`${'='.repeat(80)}\n`);
+
+  try {
+    // Step 1: Get instructor data
+    console.log('📍 STEP 1: Fetching instructor data...');
+    const { data: instructors, error: instError } = await supabase
+      .from('instructors')
+      .select('id, code, name, user_id, is_active')
+      .eq('user_id', userId);
+
+    if (instError) {
+      console.error('❌ Error fetching instructors:', instError);
+      return;
+    }
+
+    console.log(`✅ Found ${instructors?.length || 0} instructor(s)`);
+    if (!instructors?.[0]) {
+      console.warn('⚠️ WARNING: No instructor record found for this user');
+      console.log('   → User may not be linked to instructors table');
+      return;
+    }
+
+    const instructor = instructors[0];
+    const instructorId = instructor.id;
+    console.log(`   Instructor: ${instructor.name} (${instructor.code})`);
+    console.log(`   Instructor ID: ${instructorId}`);
+    console.log(`   User ID: ${instructor.user_id}`);
+    console.log(`   Active: ${instructor.is_active}\n`);
+
+    // Step 2: Check what auth.uid() actually returns
+    console.log('📍 STEP 2: Checking Supabase auth state...');
+    const { data: authUser } = await supabase.auth.getUser();
+    if (authUser?.user) {
+      console.log(`✅ Auth user ID: ${authUser.user.id}`);
+      console.log(`   Email: ${authUser.user.email}`);
+      console.log(`   Match with instructor.user_id: ${authUser.user.id === instructor.user_id}\n`);
+    } else {
+      console.warn('⚠️ No authenticated user found\n');
+    }
+
+    // Step 3: Test basic lecture_sessions query
+    console.log('📍 STEP 3: Testing basic lecture_sessions query...');
+    const { data: allSessions, error: queryError } = await supabase
+      .from('lecture_sessions')
+      .select('id, course_id, session_date, instructor_ids')
+      .eq('university_id', universityId)
+      .eq('is_active', true)
+      .eq('is_cancelled', false)
+      .gte('session_date', '2026-01-28')
+      .lte('session_date', '2026-05-28')
+      .limit(10);
+
+    if (queryError) {
+      console.error('❌ Query error:', queryError);
+      console.log('   → This indicates a database/RLS issue');
+      console.log('   → Details:', {
+        code: queryError.code,
+        message: queryError.message,
+        hint: queryError.hint,
+      });
+      return;
+    }
+
+    console.log(`✅ Query returned ${allSessions?.length || 0} sessions`);
+    
+    if (!allSessions || allSessions.length === 0) {
+      console.error('❌ PROBLEM IDENTIFIED: Query returned 0 sessions!');
+      console.log('   Likely causes:');
+      console.log('   1. 🔒 RLS policy blocks read access');
+      console.log('   2. 📊 No sessions exist for this university/date range');
+      console.log('   3. ❌ Session filters exclude all data\n');
+      
+      // Test without date filters
+      console.log('📍 STEP 3b: Testing without date filters...');
+      const { data: allSessionsNoFilter } = await supabase
+        .from('lecture_sessions')
+        .select('id, course_id, session_date, instructor_ids')
+        .eq('university_id', universityId)
+        .limit(5);
+
+      if (allSessionsNoFilter && allSessionsNoFilter.length > 0) {
+        console.log(`⚠️ Found ${allSessionsNoFilter.length} sessions without date filters`);
+        console.log('   → Date range might be wrong');
+        console.log('   → Sample dates:', allSessionsNoFilter.map(s => s.session_date).slice(0, 3));
+      }
+      return;
+    }
+
+    console.log(`   Sample session: ID=${allSessions[0].id}`);
+    console.log(`   Instructor IDs type: ${typeof allSessions[0].instructor_ids}`);
+    console.log(`   Instructor IDs: ${JSON.stringify(allSessions[0].instructor_ids)}`);
+    console.log(`   Is UUID in array: ${
+      allSessions[0].instructor_ids && allSessions[0].instructor_ids.includes(instructorId)
+        ? '✅ YES'
+        : '❌ NO'
+    }\n`);
+
+    // Step 4: Check if this instructor is in any session
+    console.log('📍 STEP 4: Checking if instructor is assigned to any sessions...');
+    const sessionsForThisInstructor = allSessions.filter(s =>
+      s.instructor_ids && Array.isArray(s.instructor_ids) && s.instructor_ids.includes(instructorId)
+    );
+
+    console.log(`✅ Found ${sessionsForThisInstructor.length} sessions for this instructor out of ${allSessions.length}`);
+
+    if (sessionsForThisInstructor.length === 0) {
+      console.warn('⚠️ Instructor not assigned to any returned sessions');
+      console.log('   → Check database: is instructor_ids populated correctly?');
+      console.log('   → Sample returned session instructor_ids:', allSessions[0].instructor_ids);
+      console.log('   → Your instructor ID:', instructorId);
+      return;
+    }
+
+    console.log(`   Assignment percentage: ${(sessionsForThisInstructor.length / allSessions.length * 100).toFixed(1)}%\n`);
+
+    // Step 5: Full range test with all conditions
+    console.log('📍 STEP 5: Testing complete query with all filters...');
+    const startDate = '2026-01-28';
+    const endDate = '2026-05-28';
+    const { data: fullRangeSessions, error: fullError, status } = await supabase
+      .from('lecture_sessions')
+      .select('id, course_id, session_date')
+      .eq('university_id', universityId)
+      .eq('is_active', true)
+      .eq('is_cancelled', false)
+      .gte('session_date', startDate)
+      .lte('session_date', endDate);
+
+    if (fullError) {
+      console.error('❌ Full range query error:', fullError);
+      console.log('   Status:', status);
+    } else {
+      console.log(`✅ Full range query: ${fullRangeSessions?.length || 0} sessions`);
+      console.log(`   Date range: ${startDate} to ${endDate}\n`);
+    }
+
+    // Final assessment
+    console.log('=' .repeat(80));
+    console.log('📊 DIAGNOSTIC SUMMARY:');
+    console.log('=' .repeat(80));
+    
+    if (allSessions.length === 0) {
+      console.error('❌ ROOT CAUSE: RLS Policy Issue or No Data');
+      console.error('   The query is returning 0 sessions');
+      console.log('\n🔧 NEXT STEPS:');
+      console.log('   1. Check if RLS policy fix V2 was applied');
+      console.log('   2. Verify instructor.user_id = auth.uid()');
+      console.log('   3. Run: testTeacherScheduleAccess() again');
+      console.log('   4. Check Supabase logs for RLS errors');
+    } else if (sessionsForThisInstructor.length > 0) {
+      console.log('✅ SUCCESS: Everything is working!');
+      console.log(`   ${sessionsForThisInstructor.length} sessions found for instructor`);
+      console.log('   Teacher schedule should display correctly');
+      console.log('   If screen is still empty:');
+      console.log('     - Clear browser cache');
+      console.log('     - Restart dev server (npm start -- -c)');
+      console.log('     - Close and reopen app');
+    } else {
+      console.error('⚠️ ISSUE: Sessions exist but not assigned to this instructor');
+      console.log('   instructor_ids in database might not contain teacher ID');
+    }
+    
+    console.log(`\n${'='.repeat(80)}\n`);
+
+  } catch (error) {
+    console.error('❌ Unexpected error:', error);
   }
 }

@@ -4,10 +4,11 @@ import { StatsCard } from '@/components/StatsCard';
 import { UpcomingClassCard } from '@/components/UpcomingClassCard';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { MaterialIcons } from '@expo/vector-icons';
+import { DashboardStats, formatTime, getTodaysDashboardData } from '@/lib/dashboard-service';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+    ActivityIndicator,
     Image,
     Pressable,
     ScrollView,
@@ -138,36 +139,13 @@ const createStyles = (colors: any, theme: string) =>
 
 
 const studentClasses = [
-  {
-    time: '09:00 AM',
-    courseCode: 'CS-101',
-    courseName: 'Introduction to Computer Science',
-    location: 'Lab 101',
-    icon: 'code',
-    isPrimary: true,
-  },
-  {
-    time: '11:00 AM',
-    courseCode: 'MATH-201',
-    courseName: 'Calculus II',
-    location: 'Room 205',
-    icon: 'calculate',
-    isPrimary: false,
-  },
-  {
-    time: '02:00 PM',
-    courseCode: 'ENG-150',
-    courseName: 'English Literature',
-    location: 'Auditorium A',
-    icon: 'book',
-    isPrimary: false,
-  },
+  // This will be populated with real data from dashboard service
 ];
 
-const stats = [
-  { icon: 'event-available', number: '12', label: 'Total Classes', color: '#10B981' },
-  { icon: 'trending-up', number: '4', label: 'Attendance Streak', color: '#2563EB' },
-  { icon: 'hourglass-top', number: '2', label: 'Absence Requests', color: '#F59E0B' },
+const defaultStats = [
+  { icon: 'event-available', number: '0', label: 'Total Classes', color: '#10B981' },
+  { icon: 'trending-up', number: '0', label: 'Attendance Streak', color: '#2563EB' },
+  { icon: 'percent', number: '0%', label: 'Weekly Attendance', color: '#F59E0B' },
 ];
 
 export const StudentDashboard = () => {
@@ -176,6 +154,10 @@ export const StudentDashboard = () => {
   const { colors, theme } = useTheme();
   const { userProfile } = useAuth();
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
+  
+  const [dashboardData, setDashboardData] = useState<DashboardStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState(defaultStats);
 
   // Get time-based greeting
   const getTimeBasedGreeting = () => {
@@ -192,6 +174,57 @@ export const StudentDashboard = () => {
   const greeting = getTimeBasedGreeting();
   const userName = userProfile?.first_name || 'there';
 
+  // Fetch dashboard data on mount
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!userProfile?.id || !userProfile?.university_id) {
+        console.warn('[StudentDashboard] Missing user profile data');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const data = await getTodaysDashboardData(
+          userProfile.id,
+          userProfile.university_id,
+          userProfile.role || 'student'  // Pass user's role for TOTP visibility
+        );
+
+        if (data) {
+          setDashboardData(data);
+          // Update stats with real data
+          setStats([
+            {
+              icon: 'event-available',
+              number: String(data.totalClasses),
+              label: 'Total Classes',
+              color: '#10B981',
+            },
+            {
+              icon: 'trending-up',
+              number: String(data.attendanceStreak),
+              label: 'Attendance Streak',
+              color: '#2563EB',
+            },
+            {
+              icon: 'percent',
+              number: `${data.weeklyAttendancePercentage}%`,
+              label: 'Weekly Attendance',
+              color: '#F59E0B',
+            },
+          ]);
+          console.log('[StudentDashboard] Dashboard data loaded successfully');
+        }
+      } catch (error) {
+        console.error('[StudentDashboard] Error fetching dashboard data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [userProfile?.id, userProfile?.university_id]);
+
   useEffect(() => {
     StatusBar.setBackgroundColor('transparent');
     StatusBar.setTranslucent(true);
@@ -201,8 +234,16 @@ export const StudentDashboard = () => {
     router.push('/profile' as any);
   };
 
+  const handleMarkAttendance = () => {
+    router.push('/(main)/mark-attendance' as any);
+  };
+
   const handleViewSchedule = () => {
     router.push('/(main)/view-schedule' as any);
+  };
+
+  const handleGeolocationTest = () => {
+    router.push('/(main)/geolocation-test' as any);
   };
 
   return (
@@ -230,13 +271,6 @@ export const StudentDashboard = () => {
             <Text style={styles.headerBrand}>ATMA</Text>
           </View>
           <View style={styles.headerActions}>
-            <Pressable style={styles.iconButton}>
-              <MaterialIcons
-                name="search"
-                size={24}
-                color={colors.textSecondary}
-              />
-            </Pressable>
             <Pressable style={styles.iconButton} onPress={handleProfilePress}>
               <Image
                 source={
@@ -272,7 +306,7 @@ export const StudentDashboard = () => {
           <QuickActionButton
             icon="qr-code-scanner"
             label="Mark Attendance"
-            onPress={() => {}}
+            onPress={handleMarkAttendance}
             colors={colors}
           />
           <QuickActionButton
@@ -287,31 +321,67 @@ export const StudentDashboard = () => {
             onPress={handleViewSchedule}
             colors={colors}
           />
+          <QuickActionButton
+            icon="location-on"
+            label="Geo Test"
+            onPress={handleGeolocationTest}
+            colors={colors}
+          />
         </Animated.View>
 
         {/* Upcoming Classes Section */}
         <Animated.View entering={FadeInUp.delay(300)}>
           <Text style={styles.sectionTitle}>Upcoming Today</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.carouselContent}
-            scrollIndicatorInsets={{ bottom: 1 }}
-          >
-            {studentClasses.map((classItem, index) => (
-              <UpcomingClassCard
-                key={`${classItem.courseCode}-${index}`}
-                time={classItem.time}
-                courseCode={classItem.courseCode}
-                courseName={classItem.courseName}
-                location={classItem.location}
-                colors={colors}
-                theme={theme}
-                isPrimary={classItem.isPrimary}
-                delay={400 + index * 100}
-              />
-            ))}
-          </ScrollView>
+          {isLoading ? (
+            <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : (() => {
+            // Filter to show only ongoing and upcoming classes (exclude completed)
+            const filteredSessions = dashboardData?.upcomingSessions?.filter((session) => {
+              const now = new Date();
+              const today = new Date().toISOString().split('T')[0];
+              const [endHours, endMinutes] = session.end_time.split(':');
+              const sessionEndTime = new Date(`${today}T${endHours}:${endMinutes}:00`);
+              // Only show classes that haven't ended yet
+              return sessionEndTime > now;
+            }) || [];
+
+            return filteredSessions.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.carouselContent}
+                scrollIndicatorInsets={{ bottom: 1 }}
+              >
+                {filteredSessions.map((session, index) => {
+                  const roomName = session.room?.room_name || session.room?.room_number || 'TBA';
+                  const buildingName = session.room?.building?.name ? ` - ${session.room.building.name}` : '';
+                  const location = `${roomName}${buildingName}`;
+
+                  return (
+                    <UpcomingClassCard
+                      key={`${session.id}-${index}`}
+                      time={formatTime(session.start_time)}
+                      courseCode={session.course?.code || 'N/A'}
+                      courseName={session.course?.name || 'Unknown Course'}
+                      location={location}
+                      colors={colors}
+                      theme={theme}
+                      isPrimary={index === 0}
+                      delay={400 + index * 100}
+                    />
+                  );
+                })}
+              </ScrollView>
+            ) : (
+              <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 14 }}>
+                  No ongoing or upcoming classes today
+                </Text>
+              </View>
+            );
+          })()}
         </Animated.View>
 
         {/* Stats Section */}

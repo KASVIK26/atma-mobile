@@ -6,14 +6,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     Alert,
     KeyboardAvoidingView,
-    Platform,
     Pressable,
     ScrollView,
     StatusBar,
     StyleSheet,
     Text,
     TextInput,
-    View,
+    View
 } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -462,7 +461,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior="padding"
       style={styles.container}
     >
       <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} backgroundColor="transparent" translucent />
