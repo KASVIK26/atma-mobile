@@ -545,7 +545,7 @@ export const ViewScheduleScreen = () => {
           console.log(
             `[ViewScheduleScreen] 👨‍🎓 Fetching STUDENT schedule for user: ${userProfile.id.substring(0, 8)}...`
           );
-          console.time('[ViewScheduleScreen] Student schedule fetch');
+          const _t0Student = Date.now();
           // Fetch student schedule
           const result = await getStudentSchedule(
             userProfile.id,
@@ -553,14 +553,14 @@ export const ViewScheduleScreen = () => {
             startDateStr,
             endDateStr
           );
-          console.timeEnd('[ViewScheduleScreen] Student schedule fetch');
+          console.log(`[ViewScheduleScreen] Student schedule fetch took ${Date.now() - _t0Student}ms`);
           sessions = result.sessions || [];
           fetchError = result.error;
         } else if (isTeacher && instructor?.id) {
           console.log(
             `[ViewScheduleScreen] 👨‍🏫 Fetching TEACHER schedule for instructor: ${instructor.id.substring(0, 8)}...`
           );
-          console.time('[ViewScheduleScreen] Teacher schedule fetch');
+          const _t0Teacher = Date.now();
           // Fetch teacher schedule using instructor ID from auth context
           const result = await getTeacherSchedule(
             instructor.id,
@@ -568,7 +568,7 @@ export const ViewScheduleScreen = () => {
             startDateStr,
             endDateStr
           );
-          console.timeEnd('[ViewScheduleScreen] Teacher schedule fetch');
+          console.log(`[ViewScheduleScreen] Teacher schedule fetch took ${Date.now() - _t0Teacher}ms`);
           sessions = result.sessions || [];
           fetchError = result.error;
         } else if (isTeacher && !instructor?.id) {
@@ -733,7 +733,6 @@ export const ViewScheduleScreen = () => {
    */
   const handleRefresh = useCallback(() => {
     console.log('[ViewScheduleScreen] 🔄 User triggered pull-to-refresh');
-    console.time('[ViewScheduleScreen] Refresh duration');
     setIsRefreshing(true);
     if (!userProfile) {
       console.warn('[ViewScheduleScreen] Cannot refresh - user profile not loaded');
