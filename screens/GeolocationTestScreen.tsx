@@ -1,43 +1,37 @@
-import MapPolygonVisualization from '@/components/MapPolygonVisualization';
+﻿import MapPolygonVisualization from '@/components/MapPolygonVisualization';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import {
-    calculateFloorHeightFromPressure
+  BarometerReading,
+  calculateFloorHeightFromPressure,
+  estimateFloorNumber,
+  pressureDropPerFloor,
+  subscribeToBarometer,
 } from '@/lib/barometer-service';
 import {
-    calculateDistance,
-    getCurrentLocation,
-    isInsideRoom,
-    LocationCoordinates,
-    requestLocationPermissions,
-    RoomGeometry,
+  calculateDistance,
+  getCurrentLocation,
+  LocationCoordinates,
+  requestLocationPermissions,
+  RoomGeometry
 } from '@/lib/geolocation-service';
+import { getNearestBuildingSurfacePressure } from '@/lib/pressure-service';
 import { MaterialIcons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View
+  Animated,
+  Easing,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-/**
- * Test Screen for Geolocation Integration
- * - Fetches current location
- * - Visualizes on map
- * - Checks if inside room geometry
- * - 5-second timer for checking
- */
-
-// Updated with actual test geometries - Indore Zone (YOUR TESTING LOCATION)
-// Student has this emulator location: latitude 23.16717, longitude 75.7846217
-
-// GeoJSON Polygon from WKB: {"type": "Polygon", "coordinates": [[[75.784611, 23.167191], [75.784614, 23.167137], [75.784665, 23.167132], [75.784665, 23.167181], [75.784611, 23.167191]]]}
-// Coordinates are in [longitude, latitude] format (standard GeoJSON format)
+// ─── Classroom test geometry (Indore zone) ────────────────────────────────────
 const ROOM_GEOMETRY: RoomGeometry = {
   type: 'Polygon',
   coordinates: [
@@ -48,968 +42,493 @@ const ROOM_GEOMETRY: RoomGeometry = {
     [75.784611, 23.167191],
   ] as number[][],
 };
+const FALLBACK_PRESSURE_HPA = 956.72;   // used only if Open-Meteo is unreachable
+const GPS_THRESHOLD_M = 12;
+// 2.8 m covers the ~0.3 hPa Open-Meteo model bias (≈ 2.1 m at 956 hPa) with extra margin.
+// Still < half a floor (floor sep ≈ 3.1 m at this altitude).
+const BARO_TOLERANCE_M = 2.8;
+const SCAN_SAMPLES = 5;
+const SCAN_INTERVAL_MS = 1000;
 
-// Alternative for comparison - Point-based (center of polygon)
-const ROOM_POINT: RoomGeometry = {
-  type: 'Point',
-  coordinates: [75.7846375, 23.1671575], // Center of polygon
-  radius: 100, // 100 meters
+// ─── Types ─────────────────────────────────────────────────────────────────────
+type VerificationStatus = 'idle' | 'scanning' | 'pass' | 'fail';
+type StepStatus = 'idle' | 'checking' | 'pass' | 'fail' | 'skipped';
+
+interface ScanResult {
+  gps: StepStatus;
+  barometer: StepStatus;
+  overall: 'pass' | 'fail';
+  distance: number;
+  pressure: number | null;
+  heightDiff: number | null;
+  floor: number | null;
+  accuracy: number;
+  timestamp: string;
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+function polygonCenter(coords: number[][]): [number, number] {
+  const lat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+  const lon = coords.reduce((s, c) => s + c[0], 0) / coords.length;
+  return [lat, lon];
+}
+const [CENTER_LAT, CENTER_LON] = polygonCenter(ROOM_GEOMETRY.coordinates as number[][]);
+
+// ─── Sub-components ────────────────────────────────────────────────────────────
+const StatusBadge = ({ status, colors }: { status: StepStatus; colors: any }) => {
+  const map: Record<StepStatus, { label: string; bg: string; fg: string; icon: keyof typeof MaterialIcons.glyphMap }> = {
+    idle:     { label: 'Waiting',  bg: colors.border,         fg: colors.textSecondary, icon: 'schedule' },
+    checking: { label: 'Checking', bg: colors.primary + '22', fg: colors.primary,       icon: 'refresh'  },
+    pass:     { label: 'Passed',   bg: colors.success + '22', fg: colors.success,       icon: 'check-circle' },
+    fail:     { label: 'Failed',   bg: '#FF3B30' + '22',      fg: '#FF3B30',            icon: 'cancel'   },
+    skipped:  { label: 'Skipped',  bg: colors.warning + '22', fg: colors.warning,       icon: 'remove-circle-outline' },
+  };
+  const { label, bg, fg, icon } = map[status];
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: bg }}>
+      <MaterialIcons name={icon} size={13} color={fg} />
+      <Text style={{ fontSize: 11, fontWeight: '700', color: fg, letterSpacing: 0.3 }}>{label}</Text>
+    </View>
+  );
 };
 
-// Baseline pressure for barometer verification (Step 2)
-const BASELINE_PRESSURE_HPA = 956.72;  // Your testing zone baseline
+const MetricRow = ({
+  label, value, valueColor, icon, colors, last = false,
+}: {
+  label: string; value: string; valueColor?: string;
+  icon: keyof typeof MaterialIcons.glyphMap; colors: any; last?: boolean;
+}) => (
+  <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9, borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth, borderBottomColor: colors.border, gap: 10 }}>
+    <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' }}>
+      <MaterialIcons name={icon} size={15} color={colors.primary} />
+    </View>
+    <Text style={{ flex: 1, fontSize: 13, color: colors.textSecondary, fontWeight: '500' }}>{label}</Text>
+    <Text style={{ fontSize: 13, fontWeight: '700', color: valueColor ?? colors.textPrimary }}>{value}</Text>
+  </View>
+);
 
+const AccuracyBar = ({ accuracy, colors }: { accuracy: number; colors: any }) => {
+  const pct = Math.min(100, Math.max(0, 100 - accuracy * 3));
+  const color = accuracy < 5 ? colors.success : accuracy < 15 ? colors.warning : '#FF3B30';
+  return (
+    <View style={{ marginTop: 6 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text style={{ fontSize: 11, color: colors.textSecondary }}>GPS Accuracy</Text>
+        <Text style={{ fontSize: 11, fontWeight: '700', color }}>
+          {accuracy.toFixed(1)} m  ·  {accuracy < 5 ? 'High' : accuracy < 15 ? 'Medium' : 'Low'}
+        </Text>
+      </View>
+      <View style={{ height: 5, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }}>
+        <View style={{ width: `${pct}%`, height: '100%', borderRadius: 3, backgroundColor: color }} />
+      </View>
+    </View>
+  );
+};
+
+// ─── Main ──────────────────────────────────────────────────────────────────────
 export function GeolocationTestScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
 
-  const [location, setLocation] = useState<LocationCoordinates | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [timerActive, setTimerActive] = useState(false);
-  const [timerCount, setTimerCount] = useState(5);
-  const [lastCheckResult, setLastCheckResult] = useState<{
-    isInside: boolean;
-    distance?: number;
-    confidence: 'high' | 'medium' | 'low';
-    timestamp: string;
-  } | null>(null);
-  const [permissionGranted, setPermissionGranted] = useState(false);
-  const [barometerReading, setBarometerReading] = useState<number | null>(null);
-  const [estimatedFloor, setEstimatedFloor] = useState<number | null>(null);
+  const [permissionGranted, setPermissionGranted]   = useState(false);
+  const [baroAvailable, setBaroAvailable]           = useState<boolean | null>(null);
+  const [liveLocation, setLiveLocation]             = useState<LocationCoordinates | null>(null);
+  const [liveBaro, setLiveBaro]                     = useState<BarometerReading | null>(null);
+  const [locationRefreshing, setLocationRefreshing] = useState(false);
+  // Live surface pressure — DB-first (buildings.surface_pressure_hpa), then Open-Meteo, then fallback
+  const [surfacePressure, setSurfacePressure]       = useState<number>(FALLBACK_PRESSURE_HPA);
+  const [surfacePressureSource, setSurfacePressureSource] = useState<'database' | 'open_meteo' | 'fallback'>('fallback');
 
-  // Request permissions on mount
+  const [scanStatus, setScanStatus]   = useState<VerificationStatus>('idle');
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanResult, setScanResult]   = useState<ScanResult | null>(null);
+  const [gpsStep, setGpsStep]         = useState<StepStatus>('idle');
+  const [baroStep, setBaroStep]       = useState<StepStatus>('idle');
+
+  const pulseAnim    = useRef(new Animated.Value(1)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  const liveDistance   = liveLocation ? calculateDistance([liveLocation.latitude, liveLocation.longitude], [CENTER_LAT, CENTER_LON]) : null;
+  const liveHeightDiff = liveBaro ? calculateFloorHeightFromPressure(surfacePressure, liveBaro.pressure) : null;
+  const liveFloor      = liveBaro ? estimateFloorNumber(surfacePressure, liveBaro.pressure) : null;
+
+  // Permissions + initial location + live surface pressure
   useEffect(() => {
-    const requestPermissions = async () => {
+    (async () => {
       const granted = await requestLocationPermissions();
       setPermissionGranted(granted);
-    };
+      if (granted) {
+        const loc = await getCurrentLocation();
+        if (loc) setLiveLocation(loc);
+      }
 
-    requestPermissions();
+      // Fetch live surface pressure — DB first (hourly Edge Fn), then Open-Meteo direct, then fallback
+      const pressResult = await getNearestBuildingSurfacePressure(CENTER_LAT, CENTER_LON);
+      setSurfacePressure(pressResult.pressure_hpa);
+      setSurfacePressureSource(
+        pressResult.source === 'database' ? 'database'
+        : pressResult.source === 'open_meteo_direct' ? 'open_meteo'
+        : 'fallback'
+      );
+      console.log(`[GeoTest] Surface pressure: ${pressResult.pressure_hpa.toFixed(2)} hPa (${pressResult.source})`);
+    })();
   }, []);
 
-  // Handle timer countdown
+  // Live barometer subscription
   useEffect(() => {
-    if (!timerActive) return;
+    let unsub: (() => void) | null = null;
+    subscribeToBarometer((reading) => {
+      setLiveBaro(reading);
+      if (baroAvailable === null) setBaroAvailable(reading.source === 'hardware');
+    }, 1000).then((fn) => { unsub = fn; });
+    return () => { unsub?.(); };
+  }, []);
 
-    if (timerCount <= 0) {
-      setTimerActive(false);
-      setTimerCount(5);
-      return;
+  // Pulse animation
+  useEffect(() => {
+    if (scanStatus === 'scanning') {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.15, duration: 700, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+          Animated.timing(pulseAnim, { toValue: 1,    duration: 700, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.stopAnimation();
+      Animated.timing(pulseAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     }
+  }, [scanStatus]);
 
-    const timer = setInterval(() => {
-      setTimerCount((prev) => prev - 1);
-    }, 1000);
+  // Progress bar animation
+  useEffect(() => {
+    Animated.timing(progressAnim, { toValue: scanProgress / SCAN_SAMPLES, duration: 400, useNativeDriver: false }).start();
+  }, [scanProgress]);
 
-    return () => clearInterval(timer);
-  }, [timerActive, timerCount]);
-
-  /**
-   * Handle location check - 5 second process with barometer verification
-   * New logic: 12m distance to center + Barometer as primary verification
-   */
-  const handleCheckLocation = async () => {
-    if (!permissionGranted) {
-      Alert.alert('Permission Denied', 'Location permission not granted');
-      return;
-    }
-
-    setChecking(true);
-    setTimerActive(true);
-    setTimerCount(5);
-
-    try {
-      console.log('[GeolocationTestScreen] Starting 5-second location + barometer check...');
-
-      // Get initial location
-      const initialLocation = await getCurrentLocation();
-
-      if (!initialLocation) {
-        Alert.alert('Error', 'Could not get location. Try again.');
-        setChecking(false);
-        setTimerActive(false);
-        return;
-      }
-
-      setLocation(initialLocation);
-      console.log(
-        '[GeolocationTestScreen] Initial location:',
-        initialLocation
-      );
-
-      // Collect location samples over 5 seconds
-      const positions: LocationCoordinates[] = [initialLocation];
-
-      for (let i = 0; i < 4; i++) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        const nextLocation = await getCurrentLocation();
-        if (nextLocation) {
-          positions.push(nextLocation);
-          console.log(`[GeolocationTestScreen] Sample ${i + 2}:`, nextLocation);
-        }
-      }
-
-      // Use last location
-      const smoothedLocation = positions[positions.length - 1];
-
-      // PRIMARY VERIFICATION: Distance to center (12m rule)
-      const result = isInsideRoom(smoothedLocation, ROOM_GEOMETRY);
-      const distanceToCenter = result.distance || 0;
-      
-      // NEW RULE: 12m distance to center instead of polygon boundary
-      const isWithin12m = distanceToCenter <= 12;
-
-      console.log(
-        `[GeolocationTestScreen] Distance to center: ${distanceToCenter.toFixed(2)}m, Within 12m: ${isWithin12m}`
-      );
-
-      // SECONDARY VERIFICATION: Barometer (pressure sensor)
-      const { getBarometerReading } = await import('@/lib/barometer-service');
-      const barometerData = await getBarometerReading();
-      
-      if (barometerData) {
-        setBarometerReading(barometerData.pressure);
-        const { estimateFloorNumber } = await import('@/lib/barometer-service');
-        const floor = estimateFloorNumber(BASELINE_PRESSURE_HPA, barometerData.pressure);
-        setEstimatedFloor(floor);
-        
-        console.log(
-          `[GeolocationTestScreen] Barometer: ${barometerData.pressure.toFixed(2)} hPa, Estimated Floor: ${floor}`
-        );
-      }
-
-      const checkResult = {
-        isInside: isWithin12m, // Changed: using 12m distance rule
-        distance: distanceToCenter,
-        confidence: result.confidence,
-        timestamp: new Date().toLocaleTimeString(),
-      };
-
-      setLastCheckResult(checkResult);
-
-      console.log(
-        `[GeolocationTestScreen] ✅ RESULT: Student is ${
-          isWithin12m ? 'INSIDE (within 12m)' : 'OUTSIDE (>12m away)'
-        }`
-      );
-      console.log('[GeolocationTestScreen] Location:', smoothedLocation);
-      console.log('[GeolocationTestScreen] Confidence:', result.confidence);
-      console.log('[GeolocationTestScreen] Distance to center:', `${distanceToCenter.toFixed(2)}m`);
-
-      // Show alert with result
-      Alert.alert(
-        isWithin12m ? '✅ Within Zone (12m)' : '❌ Outside Zone (>12m)',
-        `Location: ${smoothedLocation.latitude.toFixed(6)}, ${smoothedLocation.longitude.toFixed(6)}\n` +
-          `Distance to Center: ${distanceToCenter.toFixed(2)}m\n` +
-          `Accuracy: ${smoothedLocation.accuracy.toFixed(2)}m\n` +
-          `Confidence: ${result.confidence.toUpperCase()}${
-            barometerReading ? `\nPressure: ${barometerReading.toFixed(2)} hPa` : ''
-          }`
-      );
-    } catch (error) {
-      console.error('[GeolocationTestScreen] Error:', error);
-      Alert.alert('Error', String(error));
-    } finally {
-      setChecking(false);
-      setTimerActive(false);
-      setTimerCount(5);
-    }
-  };
-
-  /**
-   * Get fresh location (instant)
-   */
-  const handleGetCurrentLocation = async () => {
-    setLoading(true);
+  const refreshLocation = useCallback(async () => {
+    setLocationRefreshing(true);
     try {
       const loc = await getCurrentLocation();
-      if (loc) {
-        setLocation(loc);
-        console.log('[GeolocationTestScreen] Fresh location:', loc);
-      }
-    } catch (error) {
-      Alert.alert('Error', String(error));
+      if (loc) setLiveLocation(loc);
     } finally {
-      setLoading(false);
+      setLocationRefreshing(false);
     }
-  };
+  }, []);
 
-  // Calculate distance for display purposes
-  const getDisplayDistance = (): number | null => {
-    if (!location) return null;
+  const runScan = useCallback(async () => {
+    if (scanStatus === 'scanning' || !permissionGranted) return;
+    setScanStatus('scanning');
+    setScanProgress(0);
+    setScanResult(null);
+    setGpsStep('checking');
+    setBaroStep('checking');
+    progressAnim.setValue(0);
 
-    if (ROOM_GEOMETRY.type === 'Polygon') {
-      // Calculate distance to polygon center
-      const coords = ROOM_GEOMETRY.coordinates as number[][];
-      let latSum = 0,
-        lonSum = 0;
-      for (let i = 0; i < coords.length; i++) {
-        lonSum += coords[i][0];
-        latSum += coords[i][1];
+    try {
+      const samples: LocationCoordinates[] = [];
+      for (let i = 0; i < SCAN_SAMPLES; i++) {
+        const loc = await getCurrentLocation();
+        if (loc) { samples.push(loc); setLiveLocation(loc); }
+        setScanProgress(i + 1);
+        if (i < SCAN_SAMPLES - 1) await new Promise((r) => setTimeout(r, SCAN_INTERVAL_MS));
       }
-      const centerLat = latSum / coords.length;
-      const centerLon = lonSum / coords.length;
-      return calculateDistance(
-        [location.latitude, location.longitude],
-        [centerLat, centerLon]
-      );
-    } else {
-      // Point geometry
-      return calculateDistance(
-        [location.latitude, location.longitude],
-        ROOM_GEOMETRY.coordinates as [number, number]
-      );
+
+      if (samples.length === 0) {
+        setScanStatus('fail'); setGpsStep('fail'); setBaroStep('skipped'); return;
+      }
+
+      const best = samples.reduce((a, b) => (a.accuracy < b.accuracy ? a : b));
+      const dist = calculateDistance([best.latitude, best.longitude], [CENTER_LAT, CENTER_LON]);
+      const gpsPass = dist <= GPS_THRESHOLD_M;
+      setGpsStep(gpsPass ? 'pass' : 'fail');
+
+      const currentBaro = liveBaro;
+      let baroPass = false, heightDiff: number | null = null, floor: number | null = null;
+      if (currentBaro) {
+        heightDiff = calculateFloorHeightFromPressure(surfacePressure, currentBaro.pressure);
+        floor      = estimateFloorNumber(surfacePressure, currentBaro.pressure);
+        baroPass   = Math.abs(heightDiff) <= BARO_TOLERANCE_M;
+        setBaroStep(baroPass ? 'pass' : 'fail');
+      } else {
+        setBaroStep('skipped');
+      }
+
+      const overall: 'pass' | 'fail' = gpsPass && (baroPass || !currentBaro) ? 'pass' : 'fail';
+      setScanResult({
+        gps: gpsPass ? 'pass' : 'fail',
+        barometer: currentBaro ? (baroPass ? 'pass' : 'fail') : 'skipped',
+        overall, distance: dist, pressure: currentBaro?.pressure ?? null,
+        heightDiff, floor, accuracy: best.accuracy,
+        timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      });
+      setScanStatus(overall);
+    } catch (err) {
+      console.error('[GeoTest] scan error:', err);
+      setScanStatus('fail'); setGpsStep('fail'); setBaroStep('fail');
     }
+  }, [scanStatus, permissionGranted, liveBaro]);
+
+  const resetScan = () => {
+    setScanStatus('idle'); setScanProgress(0); setScanResult(null);
+    setGpsStep('idle'); setBaroStep('idle'); progressAnim.setValue(0);
   };
 
-  const distance = getDisplayDistance();
+  // ── Styles ──
+  const s = StyleSheet.create({
+    container:   { flex: 1, backgroundColor: colors.background },
+    header:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 14, gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, backgroundColor: colors.cardBackground },
+    headerTitle: { fontSize: 20, fontWeight: '800', color: colors.textPrimary },
+    headerSub:   { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
+    scroll:      { flex: 1, paddingHorizontal: 16, paddingTop: 16 },
+    card:        { backgroundColor: colors.cardBackground, borderRadius: 16, padding: 16, marginBottom: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+    cardTitle:   { fontSize: 12, fontWeight: '800', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
+    row:         { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    pill:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, gap: 5 },
+    scanBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderRadius: 14, gap: 10, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 4 },
+    scanBtnTxt:  { fontSize: 15, fontWeight: '800', color: '#fff' },
+    stepCard:    { borderRadius: 12, padding: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 12 },
+    stepNum:     { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+    mapCard:     { borderRadius: 16, overflow: 'hidden', marginBottom: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+    mapTitle:    { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, backgroundColor: colors.cardBackground },
+  });
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView style={styles.scroll} bounces={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <MaterialIcons name="location-on" size={32} color={colors.primary} />
-          <Text style={[styles.title, { color: colors.text }]}>
-            Geolocation Test
+    <SafeAreaView style={s.container}>
+      <StatusBar barStyle="default" />
+
+      {/* Header */}
+      <View style={[s.header, { paddingTop: insets.top + 8 }]}>
+        <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' }}>
+          <MaterialIcons name="radar" size={22} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.headerTitle}>Location Diagnostics</Text>
+          <Text style={s.headerSub}>GPS  ·  Barometer  ·  Verification</Text>
+        </View>
+        <View style={[s.pill, { backgroundColor: permissionGranted ? colors.success + '20' : '#FF3B30' + '20' }]}>
+          <MaterialIcons name={permissionGranted ? 'gps-fixed' : 'gps-off'} size={13} color={permissionGranted ? colors.success : '#FF3B30'} />
+          <Text style={{ fontSize: 11, fontWeight: '700', color: permissionGranted ? colors.success : '#FF3B30' }}>
+            {permissionGranted ? 'GPS On' : 'No GPS'}
           </Text>
         </View>
+      </View>
 
-        {/* Permission Status */}
-        <View
-          style={[
-            styles.statusCard,
-            {
-              backgroundColor: permissionGranted ? colors.success : colors.error,
-              opacity: 0.1,
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.statusText,
-              {
-                color: permissionGranted ? colors.success : colors.error,
-              },
-            ]}
-          >
-            {permissionGranted ? '✅ Location Permission Granted' : '❌ Permission Denied'}
-          </Text>
-        </View>
+      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
 
-        {/* Room Information */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Room/Classroom Geometry
-          </Text>
-          <View style={styles.infoRow}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>
-              Type:
-            </Text>
-            <Text style={[styles.value, { color: colors.text }]}>
-              {ROOM_GEOMETRY.type === 'Polygon' ? 'Building Polygon' : 'Point + Radius'}
-            </Text>
+        {/* ── Result banner ── */}
+        {scanResult && (
+          <View style={{ borderRadius: 14, padding: 16, marginBottom: 14, backgroundColor: scanResult.overall === 'pass' ? colors.success + '18' : '#FF3B30' + '12', borderWidth: 1, borderColor: scanResult.overall === 'pass' ? colors.success + '40' : '#FF3B30' + '40' }}>
+            <View style={[s.row, { marginBottom: 12 }]}>
+              <MaterialIcons name={scanResult.overall === 'pass' ? 'verified' : 'dangerous'} size={28} color={scanResult.overall === 'pass' ? colors.success : '#FF3B30'} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: scanResult.overall === 'pass' ? colors.success : '#FF3B30' }}>
+                  {scanResult.overall === 'pass' ? 'Location Verified ✓' : 'Verification Failed'}
+                </Text>
+                <Text style={{ fontSize: 12, marginTop: 2, color: scanResult.overall === 'pass' ? colors.success : '#FF3B30', opacity: 0.8 }}>
+                  Scanned at {scanResult.timestamp}
+                </Text>
+              </View>
+              <Pressable onPress={resetScan} style={{ padding: 6 }}>
+                <MaterialIcons name="refresh" size={20} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+            <MetricRow label="Distance to classroom" value={`${scanResult.distance.toFixed(1)} m`} valueColor={scanResult.distance <= GPS_THRESHOLD_M ? colors.success : '#FF3B30'} icon="place" colors={colors} />
+            <MetricRow label="GPS accuracy"          value={`${scanResult.accuracy.toFixed(1)} m`} icon="gps-not-fixed" colors={colors} />
+            {scanResult.pressure != null && <MetricRow label="Pressure reading"       value={`${scanResult.pressure.toFixed(2)} hPa`} icon="compress" colors={colors} />}
+            {scanResult.floor    != null && <MetricRow label="Estimated floor"        value={`Floor ${scanResult.floor}`} valueColor={scanResult.floor === 0 ? colors.success : colors.warning} icon="stairs" colors={colors} last />}
+          </View>
+        )}
+
+        {/* ── Verification steps ── */}
+        <View style={s.card}>
+          <Text style={s.cardTitle}>Verification Steps</Text>
+
+          <View style={[s.stepCard, { backgroundColor: gpsStep === 'pass' ? colors.success + '10' : gpsStep === 'fail' ? '#FF3B30' + '08' : colors.background }]}>
+            <View style={[s.stepNum, { backgroundColor: gpsStep === 'pass' ? colors.success : gpsStep === 'fail' ? '#FF3B30' : colors.textTertiary }]}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#fff' }}>1</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textPrimary }}>GPS Location</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>Must be within {GPS_THRESHOLD_M} m of classroom</Text>
+            </View>
+            <StatusBadge status={gpsStep} colors={colors} />
           </View>
 
-          {ROOM_GEOMETRY.type === 'Polygon' ? (
+          <View style={[s.stepCard, { backgroundColor: baroStep === 'pass' ? colors.success + '10' : baroStep === 'fail' ? '#FF3B30' + '08' : colors.background }]}>
+            <View style={[s.stepNum, { backgroundColor: baroStep === 'pass' ? colors.success : baroStep === 'fail' ? '#FF3B30' : baroStep === 'skipped' ? colors.warning : colors.textTertiary }]}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#fff' }}>2</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textPrimary }}>Barometer / Floor</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                {'Ground floor (0) · Δh ≤ ' + BARO_TOLERANCE_M + ' m'}
+                {'  (≈ ±' + (BARO_TOLERANCE_M / 8568 * surfacePressure).toFixed(2) + ' hPa)  ·  '}
+                {baroAvailable === true ? 'Hardware sensor' : baroAvailable === false ? 'Mock fallback' : 'Detecting…'}
+              </Text>
+            </View>
+            <StatusBadge status={baroStep} colors={colors} />
+          </View>
+
+          <View style={[s.stepCard, { backgroundColor: colors.background, marginBottom: 0 }]}>
+            <View style={[s.stepNum, { backgroundColor: colors.textTertiary }]}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#fff' }}>3</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textPrimary }}>TOTP Code</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>Verified in attendance flow</Text>
+            </View>
+            <StatusBadge status="idle" colors={colors} />
+          </View>
+        </View>
+
+        {/* ── Scan button ── */}
+        <View style={s.card}>
+          <Text style={s.cardTitle}>Verification Scan</Text>
+          {scanStatus === 'scanning' ? (
+            <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.primary + '40' }}>
+                  <MaterialIcons name="radar" size={36} color={colors.primary} />
+                </View>
+              </Animated.View>
+              <Text style={{ marginTop: 12, fontSize: 15, fontWeight: '700', color: colors.textPrimary }}>
+                Scanning… {scanProgress}/{SCAN_SAMPLES}
+              </Text>
+              <Text style={{ marginTop: 4, fontSize: 12, color: colors.textSecondary }}>Collecting GPS samples &amp; barometer data</Text>
+              <View style={{ width: '100%', height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden', marginTop: 16 }}>
+                <Animated.View style={{ height: '100%', borderRadius: 3, backgroundColor: colors.primary, width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }} />
+              </View>
+            </View>
+          ) : (
+            <Pressable
+              style={[s.scanBtn, { backgroundColor: permissionGranted ? colors.primary : colors.textTertiary, shadowColor: permissionGranted ? colors.primary : 'transparent' }]}
+              onPress={runScan}
+              disabled={!permissionGranted}
+            >
+              <MaterialIcons name="gps-fixed" size={20} color="#fff" />
+              <Text style={s.scanBtnTxt}>{scanStatus === 'idle' ? 'Start Verification Scan' : 'Scan Again'}</Text>
+            </Pressable>
+          )}
+        </View>
+
+        {/* ── Live GPS ── */}
+        <View style={s.card}>
+          <View style={[s.row, { marginBottom: 12 }]}>
+            <Text style={[s.cardTitle, { flex: 1, marginBottom: 0 }]}>Live GPS</Text>
+            <Pressable
+              onPress={refreshLocation}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.primaryLight }}
+            >
+              <MaterialIcons name={locationRefreshing ? 'refresh' : 'my-location'} size={14} color={colors.primary} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>{locationRefreshing ? 'Fetching…' : 'Refresh'}</Text>
+            </Pressable>
+          </View>
+          {liveLocation ? (
             <>
-              <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  Vertices:
-                </Text>
-                <Text style={[styles.value, { color: colors.text }]}>
-                  {(ROOM_GEOMETRY.coordinates as number[][]).length}
-                </Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  First Vertex:
-                </Text>
-                <Text style={[styles.value, { color: colors.text, fontSize: 11 }]}>
-                  {((ROOM_GEOMETRY.coordinates as number[][])[0] &&
-                  Array.isArray((ROOM_GEOMETRY.coordinates as number[][])[0]) &&
-                  (ROOM_GEOMETRY.coordinates as number[][])[0].length >= 2
-                    ? `${Number((ROOM_GEOMETRY.coordinates as number[][])[0][1]).toFixed(6)}, ${Number((ROOM_GEOMETRY.coordinates as number[][])[0][0]).toFixed(6)}`
-                    : 'N/A')}
-                </Text>
-              </View>
+              <MetricRow label="Latitude"   value={liveLocation.latitude.toFixed(6)}  icon="near-me"  colors={colors} />
+              <MetricRow label="Longitude"  value={liveLocation.longitude.toFixed(6)} icon="near-me"  colors={colors} />
+              <MetricRow label="Distance to classroom" value={liveDistance != null ? `${liveDistance.toFixed(1)} m` : '—'}
+                valueColor={liveDistance != null ? (liveDistance <= GPS_THRESHOLD_M ? colors.success : liveDistance <= 30 ? colors.warning : '#FF3B30') : undefined}
+                icon="place" colors={colors} />
+              <MetricRow label="Altitude"   value={`${liveLocation.altitude.toFixed(1)} m`}          icon="terrain" colors={colors} />
+              <MetricRow label="Speed"      value={`${(liveLocation.speed * 3.6).toFixed(1)} km/h`}  icon="speed"   colors={colors} last />
+              <AccuracyBar accuracy={liveLocation.accuracy} colors={colors} />
             </>
           ) : (
-            <>
-              <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  Center:
-                </Text>
-                <Text style={[styles.value, { color: colors.text, fontSize: 11 }]}>
-                  {(ROOM_GEOMETRY.coordinates &&
-                  Array.isArray(ROOM_GEOMETRY.coordinates) &&
-                  (ROOM_GEOMETRY.coordinates as [number, number]).length >= 2
-                    ? `${Number((ROOM_GEOMETRY.coordinates as [number, number])[1]).toFixed(6)}, ${Number((ROOM_GEOMETRY.coordinates as [number, number])[0]).toFixed(6)}`
-                    : 'N/A')}
-                </Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  Radius:
-                </Text>
-                <Text style={[styles.value, { color: colors.text }]}>
-                  {ROOM_GEOMETRY.radius || 100}m
-                </Text>
-              </View>
-            </>
+            <View style={{ paddingVertical: 20, alignItems: 'center', gap: 8 }}>
+              <MaterialIcons name="location-searching" size={32} color={colors.textTertiary} />
+              <Text style={{ fontSize: 13, color: colors.textSecondary }}>Tap Refresh to get current position</Text>
+            </View>
           )}
-
-          <View
-            style={{
-              backgroundColor: colors.background,
-              padding: 8,
-              borderRadius: 6,
-              marginTop: 8,
-            }}
-          >
-            <Text style={[styles.label, { color: colors.textSecondary, fontSize: 10 }]}>
-              Baseline Pressure: {BASELINE_PRESSURE_HPA} hPa
-            </Text>
-            <Text
-              style={[
-                styles.label,
-                { color: colors.textSecondary, fontSize: 10, marginTop: 4 },
-              ]}
-            >
-              Testing Zone: Indore, India
-            </Text>
-          </View>
         </View>
 
-        {/* Barometer Info - PRIMARY Verification */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            🌡️ PRIMARY: Barometer / Pressure Sensor
-          </Text>
-          <Text style={[styles.description, { color: colors.textSecondary }]}>
-            <Text style={{ fontWeight: '700', color: colors.primary }}>Most Accurate Verification Method</Text>
-          </Text>
-          <Text style={[styles.description, { color: colors.textSecondary }]}>
-            Measures atmospheric pressure to verify correct floor location. Accuracy: ±0.2m (much better than GPS ±3-5m). Prevents spoofing to adjacent floors even if GPS location is faked.
-          </Text>
-          
-          <View style={styles.infoRow}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>
-              🏢 Baseline Pressure (Ground Floor):
-            </Text>
-            <Text style={[styles.value, { color: colors.text, fontWeight: '700' }]}>
-              {BASELINE_PRESSURE_HPA} hPa
-            </Text>
+        {/* ── Live Barometer ── */}
+        <View style={s.card}>
+          <View style={[s.row, { marginBottom: 12 }]}>
+            <Text style={[s.cardTitle, { flex: 1, marginBottom: 0 }]}>Live Barometer</Text>
+            <View style={[s.pill, { backgroundColor: baroAvailable === true ? colors.success + '20' : colors.warning + '20' }]}>
+              <MaterialIcons name={baroAvailable === true ? 'sensors' : 'sensors-off'} size={12} color={baroAvailable === true ? colors.success : colors.warning} />
+              <Text style={{ fontSize: 10, fontWeight: '700', color: baroAvailable === true ? colors.success : colors.warning }}>
+                {baroAvailable === true ? 'Hardware' : baroAvailable === false ? 'Mock' : '…'}
+              </Text>
+            </View>
           </View>
-
-          <View style={styles.infoRow}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>
-              📊 Current Pressure (Live):
-            </Text>
-            <Text style={[styles.value, { color: barometerReading ? colors.success : colors.warning, fontWeight: '700' }]}>
-              {barometerReading ? `${barometerReading.toFixed(2)} hPa` : '⏳ Waiting...'}
-            </Text>
-          </View>
-
-          {barometerReading && (
+          {liveBaro ? (
             <>
-              <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  📏 Height Difference from Baseline:
-                </Text>
-                <Text style={[styles.value, { color: colors.text }]}>
-                  {calculateFloorHeightFromPressure(BASELINE_PRESSURE_HPA, barometerReading).toFixed(2)} m
-                </Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  🏢 Estimated Floor:
-                </Text>
-                <Text style={[styles.value, { color: estimatedFloor === 0 ? colors.success : colors.warning, fontWeight: '700' }]}>
-                  {estimatedFloor ?? 'N/A'} (Ground = 0)
-                </Text>
-              </View>
+              <MetricRow label="Pressure"          value={`${liveBaro.pressure.toFixed(2)} hPa`}                                                                                      icon="compress" colors={colors} />
+              <MetricRow label={surfacePressureSource === 'database' ? 'Surface (DB — live)' : surfacePressureSource === 'open_meteo' ? 'Surface (Open-Meteo)' : 'Surface (Fallback)'} value={`${surfacePressure.toFixed(2)} hPa ${surfacePressureSource !== 'fallback' ? '✓' : '⚠'}`} valueColor={surfacePressureSource === 'database' ? colors.success : surfacePressureSource === 'open_meteo' ? colors.success : colors.warning} icon="adjust" colors={colors} />
+              <MetricRow
+                label="Δ Pressure (bias)"
+                value={`${(surfacePressure - liveBaro.pressure) > 0 ? '+' : ''}${(surfacePressure - liveBaro.pressure).toFixed(3)} hPa`}
+                valueColor={Math.abs(surfacePressure - liveBaro.pressure) < 0.30 ? colors.success : Math.abs(surfacePressure - liveBaro.pressure) < 0.50 ? colors.warning : '#FF3B30'}
+                icon="compare" colors={colors} />
+              <MetricRow
+                label="Floor sep (per 3.5 m)"
+                value={`${pressureDropPerFloor(surfacePressure, 3.5).toFixed(3)} hPa`}
+                icon="layers" colors={colors} />
+              <MetricRow label="Height difference" value={liveHeightDiff != null ? `${liveHeightDiff > 0 ? '+' : ''}${liveHeightDiff.toFixed(1)} m` : '—'}
+                valueColor={liveHeightDiff != null ? (Math.abs(liveHeightDiff) <= BARO_TOLERANCE_M ? colors.success : '#FF3B30') : undefined}
+                icon="height"  colors={colors} />
+              <MetricRow label="Estimated floor"   value={liveFloor != null ? `Floor ${liveFloor}` : '—'} valueColor={liveFloor === 0 ? colors.success : colors.warning}             icon="stairs"   colors={colors} />
+              <MetricRow label="Altitude (derived)" value={`${liveBaro.altitude.toFixed(1)} m`}                                                                                       icon="terrain"  colors={colors} />
+              <MetricRow label="Floor check"       value={liveHeightDiff != null ? (Math.abs(liveHeightDiff) <= BARO_TOLERANCE_M ? '✓ Correct floor' : '✗ Wrong floor') : '—'}
+                valueColor={liveHeightDiff != null ? (Math.abs(liveHeightDiff) <= BARO_TOLERANCE_M ? colors.success : '#FF3B30') : undefined}
+                icon="check" colors={colors} last />
             </>
+          ) : (
+            <View style={{ paddingVertical: 20, alignItems: 'center', gap: 8 }}>
+              <MaterialIcons name="hourglass-empty" size={32} color={colors.textTertiary} />
+              <Text style={{ fontSize: 13, color: colors.textSecondary }}>Waiting for barometer…</Text>
+            </View>
           )}
-
-          <View
-            style={{
-              backgroundColor: colors.background,
-              padding: 8,
-              borderRadius: 6,
-              marginTop: 8,
-            }}
-          >
-            <Text style={[styles.label, { color: colors.success, fontSize: 10, fontWeight: '700' }]}>
-              ✅ Barometer Configured: Using mock data (Expo limitation)
-            </Text>
-            <Text
-              style={[
-                styles.label,
-                { color: colors.textSecondary, fontSize: 10, marginTop: 4 },
-              ]}
-            >
-              For production: Use custom native module or EAS Build with Expo plugin
-            </Text>
-            <Text
-              style={[
-                styles.label,
-                { color: colors.textSecondary, fontSize: 10, marginTop: 4 },
-              ]}
-            >
-              Kalman filter applied for pressure smoothing on actual device hardware
-            </Text>
-          </View>
         </View>
 
-        {/* Map Visualization */}
-        <View style={[styles.card, { backgroundColor: colors.card, padding: 0, overflow: 'hidden' }]}>
-          <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              📍 Map Visualization
-            </Text>
-            <Text style={[styles.label, { color: colors.textSecondary, marginTop: 4, fontSize: 12 }]}>
-              {lastCheckResult ? (lastCheckResult.isInside ? '✅ Inside Classroom' : '❌ Outside Classroom') : 'Classroom polygon with your current location'}
-            </Text>
+        {/* ── Map ── */}
+        <View style={s.mapCard}>
+          <View style={s.mapTitle}>
+            <Text style={[s.cardTitle, { marginBottom: 0 }]}>Classroom Polygon  ·  Indore</Text>
+            {scanResult && (
+              <Text style={{ fontSize: 12, marginTop: 2, color: scanResult.overall === 'pass' ? colors.success : '#FF3B30' }}>
+                {scanResult.overall === 'pass' ? '✓ Inside classroom' : '✗ Outside classroom'}
+              </Text>
+            )}
           </View>
           <MapPolygonVisualization
-            polygon={ROOM_GEOMETRY.type === 'Polygon' ? (ROOM_GEOMETRY.coordinates as Array<[number, number]>) : [[ROOM_GEOMETRY.coordinates[0] - 0.0001, ROOM_GEOMETRY.coordinates[1] - 0.0001], [ROOM_GEOMETRY.coordinates[0] + 0.0001, ROOM_GEOMETRY.coordinates[1] - 0.0001], [ROOM_GEOMETRY.coordinates[0] + 0.0001, ROOM_GEOMETRY.coordinates[1] + 0.0001], [ROOM_GEOMETRY.coordinates[0] - 0.0001, ROOM_GEOMETRY.coordinates[1] + 0.0001], [ROOM_GEOMETRY.coordinates[0] - 0.0001, ROOM_GEOMETRY.coordinates[1] - 0.0001]]}
-            currentLocation={location || undefined}
-            isInside={lastCheckResult?.isInside || false}
-            title="Classroom Location - Indore"
-            height={350}
+            polygon={ROOM_GEOMETRY.coordinates as Array<[number, number]>}
+            currentLocation={liveLocation || undefined}
+            isInside={scanResult?.overall === 'pass' || false}
+            title="Classroom · Indore"
+            height={280}
           />
         </View>
 
-        {/* Current Location */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <View style={styles.cardHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Current Location
-            </Text>
-            <Pressable
-              style={[styles.button, { backgroundColor: colors.primary }]}
-              onPress={handleGetCurrentLocation}
-              disabled={loading || checking}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <MaterialIcons name="my-location" size={16} color="#fff" />
-                  <Text style={styles.buttonText}>Get Location</Text>
-                </>
-              )}
-            </Pressable>
-          </View>
-
-          {location ? (
-            <>
-              <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  Latitude:
-                </Text>
-                <Text style={[styles.value, { color: colors.text }]}>
-                  {location.latitude.toFixed(6)}
-                </Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  Longitude:
-                </Text>
-                <Text style={[styles.value, { color: colors.text }]}>
-                  {location.longitude.toFixed(6)}
-                </Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  Accuracy:
-                </Text>
-                <Text
-                  style={[
-                    styles.value,
-                    {
-                      color:
-                        location.accuracy < 5
-                          ? colors.success
-                          : location.accuracy < 15
-                            ? colors.warning
-                            : colors.error,
-                    },
-                  ]}
-                >
-                  {location.accuracy.toFixed(2)}m{' '}
-                  {location.accuracy < 5
-                    ? '(High)'
-                    : location.accuracy < 15
-                      ? '(Medium)'
-                      : '(Low)'}
-                </Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  Altitude:
-                </Text>
-                <Text style={[styles.value, { color: colors.text }]}>
-                  {location.altitude.toFixed(2)}m
-                </Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>
-                  Speed:
-                </Text>
-                <Text style={[styles.value, { color: colors.text }]}>
-                  {(location.speed * 3.6).toFixed(2)} km/h
-                </Text>
-              </View>
-
-              {distance !== null && (
-                <View style={styles.infoRow}>
-                  <Text style={[styles.label, { color: colors.textSecondary }]}>
-                    Distance to Room:
-                  </Text>
-                  <Text
-                    style={[
-                      styles.value,
-                      {
-                        color:
-                          distance <= 50
-                            ? colors.success
-                            : colors.error,
-                      },
-                    ]}
-                  >
-                    {distance.toFixed(2)}m
-                  </Text>
-                </View>
-              )}
-            </>
-          ) : (
-            <Text style={[styles.placeholder, { color: colors.textSecondary }]}>
-              Click "Get Location" to fetch current position
-            </Text>
-          )}
+        {/* ── Classroom info ── */}
+        <View style={s.card}>
+          <Text style={s.cardTitle}>Classroom Geometry</Text>
+          <MetricRow label="Type"            value="Polygon"                                                   icon="hexagon"             colors={colors} />
+          <MetricRow label="Vertices"        value={`${(ROOM_GEOMETRY.coordinates as number[][]).length}`}     icon="grain"               colors={colors} />
+          <MetricRow label="Center lat"      value={CENTER_LAT.toFixed(6)}                                     icon="my-location"         colors={colors} />
+          <MetricRow label="Center lon"      value={CENTER_LON.toFixed(6)}                                     icon="my-location"         colors={colors} />
+          <MetricRow label="GPS threshold"   value={`${GPS_THRESHOLD_M} m`}                                    icon="radio-button-checked" colors={colors} />
+          <MetricRow label="Baro baseline"   value={`${surfacePressure.toFixed(2)} hPa`}                            icon="adjust"              colors={colors} />
+          <MetricRow label="Floor tolerance" value={`± ${BARO_TOLERANCE_M} m`}                                 icon="height"              colors={colors} last />
         </View>
 
-        {/* Check Location - 5 Second Timer */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            🚩 Step 1: Verify GPS Location (12m Rule)
+        {/* ── Debug ── */}
+        <View style={[s.card, { borderStyle: 'dashed' }]}>
+          <Text style={s.cardTitle}>Debug Info</Text>
+          <Text style={{ fontFamily: 'monospace', fontSize: 11, color: colors.textSecondary, lineHeight: 18 }}>
+            {`user.id      : ${user?.id?.substring(0, 16) ?? 'n/a'}…\n`}
+            {`gps perm     : ${permissionGranted}\n`}
+            {`baro source  : ${baroAvailable === true ? 'hardware' : baroAvailable === false ? 'mock' : 'detecting'}\n`}
+            {`scan samples : ${SCAN_SAMPLES} × ${SCAN_INTERVAL_MS}ms\n`}
+            {`gps thresh   : ${GPS_THRESHOLD_M} m\n`}
+            {`baro thresh  : ±${BARO_TOLERANCE_M} m\n`}
+            {`surface P    : ${surfacePressure.toFixed(2)} hPa (${surfacePressureSource})`}
           </Text>
-          <Text style={[styles.description, { color: colors.textSecondary }]}>
-            Collects GPS samples over 5 seconds + fetches barometer data. If within 12m of classroom center + correct pressure, attendance verified.
-          </Text>
-
-          {timerActive ? (
-            <View style={styles.timerContainer}>
-              <View
-                style={[
-                  styles.timerCircle,
-                  { borderColor: colors.primary, backgroundColor: colors.primary },
-                ]}
-              >
-                <Text style={styles.timerText}>{timerCount}</Text>
-              </View>
-              <Text style={[styles.timerLabel, { color: colors.textSecondary }]}>
-                Collecting location data...
-              </Text>
-            </View>
-          ) : (
-            <Pressable
-              style={[
-                styles.checkButton,
-                {
-                  backgroundColor: colors.primary,
-                  opacity: checking || !permissionGranted ? 0.5 : 1,
-                },
-              ]}
-              onPress={handleCheckLocation}
-              disabled={checking || !permissionGranted}
-            >
-              {checking ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <MaterialIcons name="gps-fixed" size={20} color="#fff" />
-                  <Text style={styles.checkButtonText}>
-                    Start 5-Second Check
-                  </Text>
-                </>
-              )}
-            </Pressable>
-          )}
-
-          {lastCheckResult && (
-            <View
-              style={[
-                styles.resultBox,
-                {
-                  backgroundColor: lastCheckResult.isInside
-                    ? colors.success
-                    : colors.error,
-                  opacity: 0.15,
-                },
-              ]}
-            >
-              <View style={styles.resultHeader}>
-                <MaterialIcons
-                  name={lastCheckResult.isInside ? 'check-circle' : 'cancel'}
-                  size={24}
-                  color={lastCheckResult.isInside ? colors.success : colors.error}
-                />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text
-                    style={[
-                      styles.resultTitle,
-                      {
-                        color: lastCheckResult.isInside
-                          ? colors.success
-                          : colors.error,
-                      },
-                    ]}
-                  >
-                    {lastCheckResult.isInside ? 'Within 12m Zone ✅' : 'Outside 12m Zone ❌'}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.resultTime,
-                      { color: colors.textSecondary },
-                    ]}
-                  >
-                    {lastCheckResult.timestamp}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.resultDetails}>
-                <View style={styles.resultRow}>
-                  <Text style={[styles.resultLabel, { color: colors.textSecondary }]}>
-                    Confidence:
-                  </Text>
-                  <Text
-                    style={[
-                      styles.resultValue,
-                      {
-                        color:
-                          lastCheckResult.confidence === 'high'
-                            ? colors.success
-                            : lastCheckResult.confidence === 'medium'
-                              ? colors.warning
-                              : colors.error,
-                      },
-                    ]}
-                  >
-                    {lastCheckResult.confidence.toUpperCase()}
-                  </Text>
-                </View>
-
-                {lastCheckResult.distance && (
-                  <View style={styles.resultRow}>
-                    <Text style={[styles.resultLabel, { color: colors.textSecondary }]}>
-                      Distance:
-                    </Text>
-                    <Text style={[styles.resultValue, { color: colors.text }]}>
-                      {lastCheckResult.distance.toFixed(2)}m
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          )}
         </View>
 
-        {/* GPS Accuracy Improvement Strategies */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            📊 GPS Accuracy: Why It Jumps & Solutions
-          </Text>
-          
-          <View style={styles.strategyBox}>
-            <Text style={[styles.strategyTitle, { color: colors.text }]}>
-              Why GPS Jumps:
-            </Text>
-            <Text style={[styles.strategyText, { color: colors.textSecondary }]}>
-              • Multipath errors (signal bouncing off buildings)
-              • Ionospheric delays
-              • Limited satellite geometry
-              • Atmospheric interference
-              • Software implementation in OS
-            </Text>
-          </View>
-
-          <View style={styles.strategyBox}>
-            <Text style={[styles.strategyTitle, { color: colors.text }]}>
-              Our 3-Step Mitigation:
-            </Text>
-            <Text style={[styles.strategyText, { color: colors.textSecondary }]}>
-              🚩 Step 1:  Geolocation (GPS with Kalman smoothing)
-              • Collect 5 samples over 5 seconds
-              • Filter noisy data with weighted averaging
-              • Use accuracy field to weight samples
-              • Result: ±3-5m accuracy zone verification
-            </Text>
-            <Text style={[styles.strategyText, { color: colors.textSecondary, marginTop: 8 }]}>
-              🌡️ Step 2: Barometer (Pressure within 0.2m)
-              • Detects correct floor in buildings
-              • Kalman filter smoothing on pressure
-              • Floor detection with ±0.5m tolerance
-              • Prevents spoofing to adjacent floors
-            </Text>
-            <Text style={[styles.strategyText, { color: colors.textSecondary, marginTop: 8 }]}>
-              🔐 Step 3: TOTP / Challenge-Response
-              • Time-based One-Time Password
-              • Location & barometer already verified
-              • TOTP is final "bolt" preventing spoofing
-              • Changes every 30 seconds
-            </Text>
-          </View>
-
-          <View style={styles.strategyBox}>
-            <Text style={[styles.strategyTitle, { color: colors.text }]}>
-              For Production Accuracy:
-            </Text>
-            <Text style={[styles.strategyText, { color: colors.textSecondary }]}>
-              ✓ Implement Kalman/Particle filter smoothing
-              ✓ Use GNSS (GPS + GLONASS + Galileo)
-              ✓ Integrate barometer sensor
-              ✓ Add WiFi/BLE proximity (indoor positioning)
-              ✓ Cache historical accuracy data
-              ✓ Combine with cell tower triangulation
-            </Text>
-          </View>
-        </View>
-
-        {/* Debug Info */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Debug Info
-          </Text>
-          <View style={styles.debugInfo}>
-            <Text style={[styles.debugLabel, { color: colors.textSecondary }]}>
-              User ID: {user?.id}
-            </Text>
-            <Text style={[styles.debugLabel, { color: colors.textSecondary }]}>
-              Permission Status: {permissionGranted ? 'Granted' : 'Denied'}
-            </Text>
-            <Text style={[styles.debugLabel, { color: colors.textSecondary }]}>
-              Accuracy Threshold: &lt;5m (High), &lt;15m (Medium), ≥15m (Low)
-            </Text>
-          </View>
-        </View>
-
-        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scroll: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginLeft: 12,
-  },
-  statusCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  statusText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  card: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderRadius: 12,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  description: {
-    fontSize: 13,
-    marginBottom: 16,
-    lineHeight: 18,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 0.5,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '500',
-    flex: 1,
-  },
-  value: {
-    fontSize: 13,
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'right',
-  },
-  placeholder: {
-    fontSize: 13,
-    textAlign: 'center',
-    paddingVertical: 16,
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
-    gap: 6,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  timerContainer: {
-    alignItems: 'center',
-    paddingVertical: 24,
-  },
-  timerCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 4,
-    marginBottom: 12,
-  },
-  timerText: {
-    fontSize: 40,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  timerLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  checkButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 8,
-    gap: 8,
-  },
-  checkButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  resultBox: {
-    marginTop: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  resultHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  resultTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  resultTime: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  resultDetails: {
-    borderTopWidth: 0.5,
-    borderTopColor: 'rgba(0,0,0,0.1)',
-    paddingTop: 12,
-  },
-  resultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  resultLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  resultValue: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  strategyBox: {
-    backgroundColor: 'rgba(0,0,0,0.02)',
-    borderLeftWidth: 3,
-    borderLeftColor: '#2196F3',
-    padding: 12,
-    marginBottom: 12,
-    borderRadius: 6,
-  },
-  strategyTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  strategyText: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  mapPlaceholder: {
-    height: 250,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  mapText: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 12,
-  },
-  mapSubtext: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  debugInfo: {
-    borderTopWidth: 0.5,
-    borderTopColor: 'rgba(0,0,0,0.1)',
-    paddingTop: 8,
-  },
-  debugLabel: {
-    fontSize: 12,
-    paddingVertical: 6,
-    fontFamily: 'monospace',
-  },
-});

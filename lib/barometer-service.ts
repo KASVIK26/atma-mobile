@@ -1,26 +1,21 @@
 /**
  * Barometer Service for altitude and pressure sensing
- * Used for verifying student is on correct floor in multi-story buildings
- * Primary verification method (more accurate than GPS distance)
- * 
- * NOTE: Expo doesn't have built-in barometer support yet.
- * This implementation provides fallback using GPS altitude calculation
- * and mock data for testing.
- * 
- * For production: Integrate with react-native-nfc-manager or custom native module
+ * Uses expo-sensors Barometer for real hardware readings on physical devices.
+ * Falls back to mock data on emulators that don't have a pressure sensor.
  */
 
-// Simulate barometer readings for testing purposes
-// In production, this would be replaced with actual sensor data
-let mockPressureValue = 956.72; // Default: your testing zone baseline
+import { Barometer } from 'expo-sensors';
+
+// Fallback mock value used only when the hardware sensor is unavailable
+let mockPressureValue = 956.72;
 
 export interface BarometerReading {
-  pressure: number; // hPa (hectopascals)
-  altitude: number; // meters (calculated from pressure)
+  pressure: number;   // hPa (hectopascals)
+  altitude: number;   // meters (derived from pressure)
   timestamp: number;
-  unit?: string; // 'hPa'
-  source?: string; // 'mock' or 'native'
-  available?: boolean; // Whether using actual sensor (false = mock data)
+  unit?: string;      // 'hPa'
+  source?: string;    // 'hardware' | 'mock'
+  available?: boolean;
 }
 
 /**
@@ -54,111 +49,180 @@ export function calculatePressureFromAltitude(
 }
 
 /**
- * Calculate floor height difference from pressure difference
- * Useful for determining if student is on correct floor
+ * Calculate height above the baseline from two pressure readings.
  *
- * Typical floor heights ~3-4 meters
- * Pressure difference ~30-40 hPa per floor
+ * Uses the hypsometric equation (accurate at any pressure, not just near 1013.25 hPa):
  *
- * @param baselinePressure - Baseline pressure for ground floor in hPa
- * @param currentPressure - Current atmospheric pressure in hPa
- * @returns estimated height difference in meters
+ *   Δh = (Rd · Tv / g) · ln(P_base / P_device)
+ *
+ * where:
+ *   Rd = 287.058 J·kg⁻¹·K⁻¹  (specific gas constant, dry air)
+ *   Tv = 293 K                  (virtual temp, ≈ 20 °C — adjust for local climate)
+ *    g = 9.80665 m·s⁻²
+ *   → scale_height ≈ 8568 m
+ *
+ * Why not the old `ΔP × 8.4` linear constant?
+ *   That constant assumes P_base = 1013.25 hPa.  At Indore (~956 hPa)
+ *   the correct conversion is ≈ 7.93 m/hPa, not 8.4 — a ~6% error per floor.
+ *   The log formula is self-correcting regardless of local surface pressure.
+ *
+ * @param basePressure   – Live surface pressure at building ground floor (hPa).
+ *                         Provide buildings.surface_pressure_hpa from the DB
+ *                         (updated hourly via Open-Meteo).
+ * @param devicePressure – Current barometer reading on the student's device (hPa).
+ * @returns height above ground floor in metres (positive = higher floor).
  */
 export function calculateFloorHeightFromPressure(
-  baselinePressure: number,
-  currentPressure: number
+  basePressure: number,
+  devicePressure: number
 ): number {
-  // For every 12 Pa decrease, altitude increases by approximately 1 meter
-  // Or: 1 hPa = 100 Pa ≈ 8.4 meters altitude change
-  const pressureDifference = baselinePressure - currentPressure;
-  return pressureDifference * 8.4;
+  if (basePressure <= 0 || devicePressure <= 0) return 0;
+
+  // Scale height for standard atmosphere at 20 °C:
+  //   Rd * Tv / g = 287.058 * 293 / 9.80665 ≈ 8568 m
+  const SCALE_HEIGHT_M = 8568;
+  return SCALE_HEIGHT_M * Math.log(basePressure / devicePressure);
 }
 
 /**
- * Estimate floor number from baseline and current pressure
- * @param baselinePressure - Baseline pressure (typically ground floor)
- * @param currentPressure - Current atmospheric pressure
- * @param floorHeightMeters - Typical floor height (default 3.5m)
- * @returns estimated floor number (0 = ground floor, 1 = first floor, etc.)
+ * Estimate the floor a student is currently on.
+ *
+ * @param basePressure      – Live surface pressure at building ground (hPa).
+ *                            Use buildings.surface_pressure_hpa from the DB.
+ * @param devicePressure    – Device barometer reading (hPa).
+ * @param floorHeightMeters – Average floor-to-floor height (default 3.5 m).
+ *                            Typical Indian university buildings: 3.2–3.8 m.
+ *                            Override per building if you know the real value.
+ * @returns floor index where 0 = ground floor, 1 = first floor, etc.
+ *          Negative values mean the device reads HIGHER than the baseline
+ *          (rare; could indicate the student is on a ramp/basement or weather).
  */
 export function estimateFloorNumber(
-  baselinePressure: number,
-  currentPressure: number,
+  basePressure: number,
+  devicePressure: number,
   floorHeightMeters: number = 3.5
 ): number {
-  const heightDifference = calculateFloorHeightFromPressure(
-    baselinePressure,
-    currentPressure
-  );
+  const heightDifference = calculateFloorHeightFromPressure(basePressure, devicePressure);
   return Math.round(heightDifference / floorHeightMeters);
 }
 
 /**
- * Request barometer/pressure sensor permission
- * Note: Requires custom native module or external library integration
+ * Expected pressure delta between adjacent floors.
+ * Useful for setting verification tolerances.
+ *
+ * At Indore (~956 hPa, 20 °C):
+ *   pressureDropPerFloor(956, 3.5) ≈ 0.39 hPa
+ *
+ * @param surfacePressure   – Current Open-Meteo surface pressure (hPa).
+ * @param floorHeightMeters – Floor height (default 3.5 m).
+ * @returns pressure drop in hPa for one floor.
+ */
+export function pressureDropPerFloor(
+  surfacePressure: number,
+  floorHeightMeters: number = 3.5
+): number {
+  // Derived from inverting the hypsometric formula:
+  //   ΔP_floor = P_base * (1 - exp(-floor_height / scale_height))
+  const SCALE_HEIGHT_M = 8568;
+  return surfacePressure * (1 - Math.exp(-floorHeightMeters / SCALE_HEIGHT_M));
+}
+
+/**
+ * Compute the expected barometer reading for a known floor.
+ * Use this to verify: |device_pressure - expected_pressure| ≤ tolerance
+ *
+ * @param surfacePressure   – Open-Meteo surface pressure at building ground (hPa).
+ * @param floorNumber       – Target floor (0 = ground).
+ * @param floorHeightMeters – Floor height (default 3.5 m).
+ * @returns expected barometer reading in hPa.
+ */
+export function expectedPressureAtFloor(
+  surfacePressure: number,
+  floorNumber: number,
+  floorHeightMeters: number = 3.5
+): number {
+  const SCALE_HEIGHT_M = 8568;
+  const floorAltitude = floorNumber * floorHeightMeters;
+  return surfacePressure * Math.exp(-floorAltitude / SCALE_HEIGHT_M);
+}
+
+/**
+ * Check whether the device has a barometer/pressure sensor.
  */
 export async function requestBarometerPermission(): Promise<boolean> {
   try {
-    // Placeholder: Would integrate with native barometer module
-    console.warn(
-      "[BarometerService] Barometer not available in Expo. Requires custom native module.",
-      "Consider using: react-native-sensors or custom implementation"
-    );
-    return false;
+    const available = await Barometer.isAvailableAsync();
+    if (!available) {
+      console.warn('[BarometerService] Hardware barometer not available on this device/emulator — will use mock data');
+    }
+    return available;
   } catch (error) {
-    console.error("[BarometerService] Error checking permission:", error);
+    console.error('[BarometerService] Error checking barometer availability:', error);
     return false;
   }
 }
 
 /**
- * Get current barometer reading
- * FALLBACK: Uses mock data since Expo doesn't support barometer
- * 
- * In production, this would:
- * 1. Use actual sensor hardware via native module
- * 2. Apply Kalman filter for smoothing
- * 3. Return pressure in hPa with timestamp
- * 
- * For testing: Can manually set mockPressureValue for different floor scenarios
+ * Get a single barometer reading.
+ * On real hardware: subscribes to expo-sensors Barometer, collects one reading, unsubscribes.
+ * On emulators without sensor: falls back to mock value ± noise.
+ *
+ * Kalman filtering is applied on top using BarometerKalmanFilter for smoothing.
  */
 export async function getBarometerReading(): Promise<BarometerReading | null> {
   try {
-    // Expo managed workflow doesn't support barometer access
-    // This limitation requires either:
-    // 1. Custom native module (complex)
-    // 2. EAS Build with custom Expo plugin (medium)
-    // 3. Bare React Native workflow (not using Expo)
-    
-    // Return mock data for testing
-    // In real scenarios, add small noise to simulate sensor variance
-    const noise = (Math.random() - 0.5) * 0.5; // ±0.25 hPa
-    const currentPressure = mockPressureValue + noise;
-    const altitude = calculateAltitudeFromPressure(currentPressure);
-    
-    const reading: BarometerReading = {
-      pressure: currentPressure,
-      altitude,
-      timestamp: Date.now(),
-    };
+    const available = await Barometer.isAvailableAsync();
 
-    console.log(
-      `[BarometerService] Mock pressure: ${currentPressure.toFixed(2)} hPa, Altitude: ${altitude.toFixed(2)}m (NOT from actual sensor)`
-    );
+    if (available) {
+      // Read from hardware sensor with a 3-second timeout
+      const pressure = await new Promise<number>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          subscription.remove();
+          reject(new Error('Barometer read timeout'));
+        }, 3000);
 
-    return reading;
+        const subscription = Barometer.addListener(({ pressure: p }) => {
+          clearTimeout(timer);
+          subscription.remove();
+          resolve(p);
+        });
+      });
+
+      const altitude = calculateAltitudeFromPressure(pressure);
+      console.log(`[BarometerService] ✅ Hardware pressure: ${pressure.toFixed(2)} hPa, altitude: ${altitude.toFixed(1)}m`);
+
+      return {
+        pressure,
+        altitude,
+        timestamp: Date.now(),
+        unit: 'hPa',
+        source: 'hardware',
+        available: true,
+      };
+    } else {
+      // Emulator / no sensor → mock fallback
+      const noise = (Math.random() - 0.5) * 0.5;
+      const currentPressure = mockPressureValue + noise;
+      const altitude = calculateAltitudeFromPressure(currentPressure);
+      console.warn(`[BarometerService] ⚠️ Mock pressure: ${currentPressure.toFixed(2)} hPa (no hardware sensor)`);
+
+      return {
+        pressure: currentPressure,
+        altitude,
+        timestamp: Date.now(),
+        unit: 'hPa',
+        source: 'mock',
+        available: false,
+      };
+    }
   } catch (error) {
-    console.error("[BarometerService] Error getting barometer reading:", error);
+    console.error('[BarometerService] Error getting barometer reading:', error);
     return null;
   }
 }
 
 /**
- * FOR TESTING: Manually set a pressure value (simulates being on different floors)
- * Example:
- *   setMockPressure(956.72) // Ground floor
- *   setMockPressure(956.44) // Floor +1 (approx 2.4m higher)
- *   setMockPressure(956.16) // Floor +2 (approx 4.8m higher)
+ * FOR TESTING: Manually override the mock pressure value
  */
 export function setMockPressure(pressureHpa: number): void {
   mockPressureValue = pressureHpa;
@@ -166,15 +230,67 @@ export function setMockPressure(pressureHpa: number): void {
 }
 
 /**
+ * Subscribe to continuous barometer updates.
+ * Returns an unsubscribe function. On unavailable devices yields mock readings
+ * via setInterval so callers always get a stream regardless of hardware.
+ *
+ * @param onReading  – called with each new BarometerReading
+ * @param intervalMs – update interval for mock fallback (default 1000ms)
+ */
+export async function subscribeToBarometer(
+  onReading: (reading: BarometerReading) => void,
+  intervalMs = 1000
+): Promise<() => void> {
+  const available = await Barometer.isAvailableAsync();
+
+  if (available) {
+    const filter = new BarometerKalmanFilter();
+    const sub = Barometer.addListener(({ pressure: p }) => {
+      const smoothed = filter.update(p);
+      onReading({
+        pressure: smoothed,
+        altitude: calculateAltitudeFromPressure(smoothed),
+        timestamp: Date.now(),
+        unit: 'hPa',
+        source: 'hardware',
+        available: true,
+      });
+    });
+    return () => sub.remove();
+  } else {
+    // Emulator fallback — emit mock data on an interval
+    const filter = new BarometerKalmanFilter(mockPressureValue);
+    const id = setInterval(() => {
+      const noise = (Math.random() - 0.5) * 0.5;
+      const raw = mockPressureValue + noise;
+      const smoothed = filter.update(raw);
+      onReading({
+        pressure: smoothed,
+        altitude: calculateAltitudeFromPressure(smoothed),
+        timestamp: Date.now(),
+        unit: 'hPa',
+        source: 'mock',
+        available: false,
+      });
+    }, intervalMs);
+    return () => clearInterval(id);
+  }
+}
+
+/**
  * Kalman filter for barometer readings
  * Smooths pressure readings to reduce noise
  */
 export class BarometerKalmanFilter {
-  private q: number = 0.01; // Process noise (how much we trust new measurements)
-  private r: number = 0.5; // Measurement noise (how much sensor noise we expect)
-  private x: number = 1013.25; // State (current pressure estimate)
-  private p: number = 1; // Estimate error
+  private q: number = 0.01;
+  private r: number = 0.5;
+  private x: number;
+  private p: number = 1;
   private lastTimestamp: number = 0;
+
+  constructor(initialValue: number = 1013.25) {
+    this.x = initialValue;
+  }
 
   /**
    * Update filter with new measurement

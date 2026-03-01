@@ -51,8 +51,9 @@ export async function getTodaysDashboardData(
   userRole: 'student' | 'teacher' | 'admin' = 'student'
 ): Promise<DashboardStats | null> {
   try {
-    // Get today's date in YYYY-MM-DD format
-    const today = new Date().toISOString().split('T')[0];
+    // Get today's date in YYYY-MM-DD format (IST-safe — no UTC split)
+    const _now = new Date();
+    const today = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
 
     console.log('[Dashboard Service] 📊 Fetching today\'s sessions for:', today, 'Role:', userRole);
 
@@ -228,12 +229,25 @@ export async function getTodaysDashboardData(
       return sessionEndTime < now;
     }).length;
 
+    // For students: attendance streak = sessions where student is marked 'present' today
+    let attendanceStreak = completedCount; // default (teachers/admin: completed sessions)
+    if (userRole === 'student' && sessionIds.length > 0) {
+      const { data: presentRecords } = await supabase
+        .from('attendance_records')
+        .select('id')
+        .eq('student_id', userId)
+        .in('lecture_session_id', sessionIds)
+        .eq('status', 'present');
+      attendanceStreak = presentRecords?.length ?? 0;
+      console.log('[Dashboard Service] Student present count today:', attendanceStreak);
+    }
+
     console.log('[Dashboard Service] ✓ Prepared dashboard data with', upcomingSessions.length, 'sessions,', completedCount, 'completed');
     console.log('[Dashboard Service] TOTP visibility:', shouldShowTotp ? 'VISIBLE (teacher/admin)' : 'HIDDEN (student)');
 
     return {
       totalClasses: filteredSessions.length,
-      attendanceStreak: completedCount, // Use for completed sessions count for teachers
+      attendanceStreak,
       weeklyAttendancePercentage: 0, // Set to 0% as per requirement
       upcomingSessions,
     };
@@ -296,7 +310,8 @@ export async function getTodaysClassesWithStatus(
     }
 
     const now = new Date();
-    const today = new Date().toISOString().split('T')[0];
+    const _n = now;
+    const today = `${_n.getFullYear()}-${String(_n.getMonth() + 1).padStart(2, '0')}-${String(_n.getDate()).padStart(2, '0')}`;
 
     return dashboardData.upcomingSessions.map((session) => {
       const [sessionHours, sessionMinutes] = session.start_time.split(':');

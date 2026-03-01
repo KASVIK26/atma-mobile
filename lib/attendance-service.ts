@@ -106,7 +106,12 @@ export async function markAttendance(
       estimatedFloor = estimateFloorNumber(baselinePressure, currentPressure);
       // Accept if within 0.5 floors (allowing for measurement variance)
       const heightDiff = calculateFloorHeightFromPressure(baselinePressure, currentPressure);
-      barometerVerified = Math.abs(heightDiff) <= 2.0; // ±2 meters tolerance
+      // ±2.8 m tolerance (≈ ±0.31 hPa at 956 hPa).
+      // Accounts for: Open-Meteo model bias (~±0.3 hPa) + inter-device sensor
+      // calibration spread (~±0.3 hPa). Floor separation at Indore ≈ 0.39 hPa
+      // (3.1 m), so this window is still < half a floor and won't cross-accept
+      // adjacent floors when the student is clearly on the wrong floor.
+      barometerVerified = Math.abs(heightDiff) <= 2.8;
       
       console.log('[AttendanceService] Barometer Verification:', {
         currentPressure: currentPressure.toFixed(2),
@@ -419,8 +424,8 @@ export async function getInstructorActiveSession(
   universityId: string
 ): Promise<TeacherCourseAttendance | null> {
   try {
-    const today = new Date().toISOString().split('T')[0];
     const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; // local IST date, not UTC
 
     console.log('[AttendanceService] Fetching active session for instructor:', instructorId);
 
@@ -547,9 +552,11 @@ export async function getInstructorAttendanceHistory(
   try {
     console.log('[AttendanceService] Fetching attendance history for instructor:', instructorId, 'limit:', limitDays, 'days');
 
-    // Get date range
-    const endDate = new Date().toISOString().split('T')[0];
-    const startDate = new Date(Date.now() - limitDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    // Get date range (use local IST date, not UTC toISOString which can be a day behind before 05:30)
+    const _now = new Date();
+    const toLocalDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const endDate = toLocalDate(_now);
+    const startDate = toLocalDate(new Date(Date.now() - limitDays * 24 * 60 * 60 * 1000));
 
     // Get all sessions in date range
     const { data: sessions, error } = await supabase

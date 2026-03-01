@@ -1,9 +1,12 @@
 import { AttendanceBottomSheet } from '@/components/AttendanceBottomSheet';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
+import { BarometerReading, calculateFloorHeightFromPressure, estimateFloorNumber, subscribeToBarometer } from '@/lib/barometer-service';
 import { ClassWithStatus, getTodaysClassesWithStatus } from '@/lib/dashboard-service';
+import { getCurrentLocation } from '@/lib/geolocation-service';
+import { getNearestBuildingSurfacePressure } from '@/lib/pressure-service';
 import { MaterialIcons } from '@expo/vector-icons';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Pressable,
@@ -15,6 +18,20 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+interface TestVerificationResult {
+  gpsStatus: 'pass' | 'fail' | 'skipped';
+  baroStatus: 'pass' | 'fail' | 'skipped';
+  totpStatus: 'skipped';
+  gpsAccuracy: number | null;
+  baroHpa: number | null;
+  surfacePressureHpa: number | null;
+  heightDiff: number | null;
+  floor: number | null;
+  score: number;
+  overall: 'pass' | 'fail';
+  timestamp: string;
+}
 
 const createStyles = (colors: any) =>
   StyleSheet.create({
@@ -186,6 +203,9 @@ export const MarkAttendanceScreen = () => {
   const [ongoingSession, setOngoingSession] = useState<ClassWithStatus | null>(null);
   const [showBottomSheet, setShowBottomSheet] = useState(false);
   const [testMode, setTestMode] = useState(false);
+  const [testRunning, setTestRunning] = useState(false);
+  const [testResult, setTestResult] = useState<TestVerificationResult | null>(null);
+  const liveBaroRef = useRef<BarometerReading | null>(null);
 
   // Fetch today's classes and find ongoing one
   useEffect(() => {
@@ -231,6 +251,61 @@ export const MarkAttendanceScreen = () => {
 
     fetchClasses();
   }, [userProfile?.id, userProfile?.university_id]);
+
+  // Subscribe to barometer when in test mode so we have a reading ready
+  useEffect(() => {
+    if (!testMode) return;
+    let unsub: (() => void) | null = null;
+    subscribeToBarometer((reading) => { liveBaroRef.current = reading; }, 1000)
+      .then((fn) => { unsub = fn; });
+    return () => { unsub?.(); };
+  }, [testMode]);
+
+  // Run a local GPS + barometer verification without touching the DB
+  const runTestVerification = useCallback(async () => {
+    setTestRunning(true);
+    setTestResult(null);
+    try {
+      const loc = await getCurrentLocation();
+      const gpsOk = loc !== null && loc.accuracy <= 30;
+
+      const lat = loc?.latitude ?? 23.1765;
+      const lon = loc?.longitude ?? 75.7885;
+      // DB-first: nearest building's surface_pressure_hpa (updated hourly by Edge Fn)
+      const pressResult = await getNearestBuildingSurfacePressure(lat, lon);
+      const baseline = pressResult.pressure_hpa;
+      console.log(`[MarkAttendance] Baseline pressure: ${baseline.toFixed(2)} hPa (${pressResult.source})`);
+
+      const baro = liveBaroRef.current;
+      let baroOk = false, heightDiff: number | null = null, floor: number | null = null;
+      if (baro) {
+        heightDiff = calculateFloorHeightFromPressure(baseline, baro.pressure);
+        floor      = estimateFloorNumber(baseline, baro.pressure);
+        baroOk     = Math.abs(heightDiff) <= 2.8;
+      }
+
+      const stepsChecked = (gpsOk ? 1 : 0) + (baro ? 1 : 0) + 0; // TOTP is always skipped
+      const stepsPassed  = (gpsOk ? 1 : 0) + (baro && baroOk ? 1 : 0);
+
+      setTestResult({
+        gpsStatus:          loc ? (gpsOk ? 'pass' : 'fail') : 'fail',
+        baroStatus:         baro ? (baroOk ? 'pass' : 'fail') : 'skipped',
+        totpStatus:         'skipped',
+        gpsAccuracy:        loc?.accuracy ?? null,
+        baroHpa:            baro?.pressure ?? null,
+        surfacePressureHpa: baseline,
+        heightDiff,
+        floor,
+        score:              stepsPassed,
+        overall:            gpsOk ? 'pass' : 'fail',
+        timestamp:          new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      });
+    } catch (err) {
+      console.error('[MarkAttendanceScreen] test verification error:', err);
+    } finally {
+      setTestRunning(false);
+    }
+  }, []);
 
   useEffect(() => {
     StatusBar.setBackgroundColor('transparent');
@@ -296,7 +371,7 @@ export const MarkAttendanceScreen = () => {
               <View style={styles.sessionBadge}>
                 <View style={styles.badgeDot} />
                 <Text style={styles.badgeText}>
-                  {testMode ? 'TEST MODE - Click to Test' : 'Currently Ongoing'}
+                  {testMode ? 'TEST MODE – No DB writes' : 'Currently Ongoing'}
                 </Text>
               </View>
 
@@ -352,22 +427,25 @@ export const MarkAttendanceScreen = () => {
                 )}
               </View>
 
-              {/* Mark Attendance Button */}
+              {/* Mark Attendance / Test Button */}
               <Pressable
-                style={styles.markButton}
+                style={[styles.markButton, testMode && { backgroundColor: colors.primary }]}
                 onPress={() => {
-                  if (ongoingSession || testMode) {
-                    // Use actual session if available, otherwise test
-                    if (!ongoingSession && testMode) {
-                      setOngoingSession(classes[0])
-                    }
+                  if (testMode) {
+                    runTestVerification();
+                  } else if (ongoingSession) {
                     setShowBottomSheet(true);
                   }
                 }}
+                disabled={testRunning}
               >
-                <MaterialIcons name="check-circle" size={18} color="#FFFFFF" />
+                <MaterialIcons
+                  name={testRunning ? 'hourglass-empty' : testMode ? 'science' : 'check-circle'}
+                  size={18}
+                  color="#FFFFFF"
+                />
                 <Text style={styles.markButtonText}>
-                  {testMode ? 'Test Attendance' : 'Mark Attendance'}
+                  {testRunning ? 'Running diagnostics…' : testMode ? 'Run Sensor Diagnostics' : 'Mark Attendance'}
                 </Text>
               </Pressable>
             </View>
@@ -385,6 +463,129 @@ export const MarkAttendanceScreen = () => {
             </View>
           )}
         </Animated.View>
+
+        {/* Test Mode Result Card */}
+        {testResult && (
+          <Animated.View entering={FadeInUp.delay(100)}>
+            {/* Overall banner */}
+            <View style={{
+              borderRadius: 14,
+              padding: 16,
+              marginBottom: 16,
+              backgroundColor: testResult.overall === 'pass' ? colors.success + '18' : '#FF3B30' + '12',
+              borderWidth: 1,
+              borderColor: testResult.overall === 'pass' ? colors.success + '40' : '#FF3B30' + '40',
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                <MaterialIcons
+                  name={testResult.overall === 'pass' ? 'verified' : 'dangerous'}
+                  size={28}
+                  color={testResult.overall === 'pass' ? colors.success : '#FF3B30'}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 17, fontWeight: '800', color: testResult.overall === 'pass' ? colors.success : '#FF3B30' }}>
+                    {testResult.overall === 'pass' ? 'Sensors Verified ✓' : 'Verification Failed'}
+                  </Text>
+                  <Text style={{ fontSize: 11, marginTop: 2, color: colors.textSecondary }}>
+                    Test run at {testResult.timestamp} · No database writes
+                  </Text>
+                </View>
+                <Pressable onPress={() => setTestResult(null)} style={{ padding: 6 }}>
+                  <MaterialIcons name="close" size={18} color={colors.textSecondary} />
+                </Pressable>
+              </View>
+
+              {/* Score */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.cardBackground }}>
+                <MaterialIcons name="stars" size={20} color={testResult.score >= 2 ? colors.success : testResult.score === 1 ? colors.warning : '#FF3B30'} />
+                <Text style={{ fontSize: 18, fontWeight: '800', color: testResult.score >= 2 ? colors.success : testResult.score === 1 ? colors.warning : '#FF3B30' }}>
+                  {testResult.score}/2 sensors verified
+                </Text>
+              </View>
+
+              {/* Step 1: GPS */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
+                <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: testResult.gpsStatus === 'pass' ? colors.success : testResult.gpsStatus === 'fail' ? '#FF3B30' : colors.textTertiary }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#fff' }}>1</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textPrimary }}>GPS Location</Text>
+                  {testResult.gpsAccuracy != null && (
+                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 1 }}>
+                      Accuracy: {testResult.gpsAccuracy.toFixed(1)} m
+                    </Text>
+                  )}
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20,
+                  backgroundColor: testResult.gpsStatus === 'pass' ? colors.success + '22' : testResult.gpsStatus === 'fail' ? '#FF3B30' + '22' : colors.border }}>
+                  <MaterialIcons
+                    name={testResult.gpsStatus === 'pass' ? 'check-circle' : testResult.gpsStatus === 'fail' ? 'cancel' : 'schedule'}
+                    size={13}
+                    color={testResult.gpsStatus === 'pass' ? colors.success : testResult.gpsStatus === 'fail' ? '#FF3B30' : colors.textSecondary}
+                  />
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: testResult.gpsStatus === 'pass' ? colors.success : testResult.gpsStatus === 'fail' ? '#FF3B30' : colors.textSecondary }}>
+                    {testResult.gpsStatus === 'pass' ? 'Passed' : testResult.gpsStatus === 'fail' ? 'Failed' : 'Skipped'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Step 2: Barometer */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
+                <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: testResult.baroStatus === 'pass' ? colors.success : testResult.baroStatus === 'fail' ? '#FF3B30' : colors.warning }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#fff' }}>2</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textPrimary }}>Barometer / Floor</Text>
+                  {testResult.baroHpa != null ? (
+                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 1 }}>
+                      {testResult.baroHpa.toFixed(2)} hPa · {testResult.heightDiff != null ? `Δh ${testResult.heightDiff > 0 ? '+' : ''}${testResult.heightDiff.toFixed(1)} m` : ''}{testResult.floor != null ? ` · Floor ${testResult.floor}` : ''}
+                    </Text>
+                  ) : (
+                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 1 }}>No barometer reading</Text>
+                  )}
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20,
+                  backgroundColor: testResult.baroStatus === 'pass' ? colors.success + '22' : testResult.baroStatus === 'fail' ? '#FF3B30' + '22' : colors.warning + '22' }}>
+                  <MaterialIcons
+                    name={testResult.baroStatus === 'pass' ? 'check-circle' : testResult.baroStatus === 'fail' ? 'cancel' : 'remove-circle-outline'}
+                    size={13}
+                    color={testResult.baroStatus === 'pass' ? colors.success : testResult.baroStatus === 'fail' ? '#FF3B30' : colors.warning}
+                  />
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: testResult.baroStatus === 'pass' ? colors.success : testResult.baroStatus === 'fail' ? '#FF3B30' : colors.warning }}>
+                    {testResult.baroStatus === 'pass' ? 'Passed' : testResult.baroStatus === 'fail' ? 'Failed' : 'Skipped'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Step 3: TOTP */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.textTertiary }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#fff' }}>3</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textPrimary }}>TOTP Code</Text>
+                  <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 1 }}>Verified in live attendance flow</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: colors.warning + '22' }}>
+                  <MaterialIcons name="remove-circle-outline" size={13} color={colors.warning} />
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.warning }}>Skipped</Text>
+                </View>
+              </View>
+
+              {/* Surface pressure info */}
+              {testResult.surfacePressureHpa != null && (
+                <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+                  <Text style={{ fontSize: 11, color: colors.textSecondary, textAlign: 'center' }}>
+                    Surface pressure: {testResult.surfacePressureHpa.toFixed(2)} hPa (DB / Open-Meteo)
+                  </Text>
+                </View>
+              )}
+            </View>
+          </Animated.View>
+        )}
+
       </ScrollView>
 
       {/* Attendance Bottom Sheet */}

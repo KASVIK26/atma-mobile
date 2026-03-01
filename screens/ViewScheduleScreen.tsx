@@ -7,15 +7,15 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Image,
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Image,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -440,11 +440,13 @@ const formatDateForAPI = (date: Date): string => {
  * Convert LectureSessionExtended to ScheduleClass for compatibility
  */
 const convertToScheduleClass = (session: LectureSessionExtended, colors: any): ScheduleClass => {
-  const [startHour, startMin] = session.start_time.split(':').map(Number);
-  const [endHour, endMin] = session.end_time.split(':').map(Number);
-  const startMinutes = startHour * 60 + startMin;
-  const endMinutes = endHour * 60 + endMin;
-  const duration = endMinutes - startMinutes;
+  const rawStart = session.start_time ?? '00:00';
+  const rawEnd   = session.end_time   ?? '00:00';
+  const [startHour, startMin] = rawStart.split(':').map(Number);
+  const [endHour, endMin]     = rawEnd.split(':').map(Number);
+  const startMinutes = (startHour || 0) * 60 + (startMin || 0);
+  const endMinutes   = (endHour   || 0) * 60 + (endMin   || 0);
+  const duration = Math.max(0, endMinutes - startMinutes);
 
   const hour = startHour % 12 || 12;
   const period = startHour >= 12 ? 'PM' : 'AM';

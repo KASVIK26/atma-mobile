@@ -3,15 +3,15 @@ import { ClassWithStatus } from '@/lib/dashboard-service';
 import { MaterialIcons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View
 } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -293,9 +293,23 @@ export const AttendanceBottomSheet: React.FC<AttendanceBottomSheetProps> = ({
         return;
       }
 
-      // Step 3: Get current pressure (mock data for now)
+      // Step 3: Get current barometer reading
       const barometerData = await getBarometerReading();
       const currentPressure = barometerData?.pressure || null;
+
+      // Step 3b: Fetch live baseline pressure from DB (buildings.surface_pressure_hpa — hourly Edge Fn)
+      const { getBuildingSurfacePressure } = await import('@/lib/pressure-service');
+      const buildingId = roomData.building?.id;
+      let baselinePressure: number | null = roomData.baseline_pressure_hpa;
+      if (buildingId) {
+        try {
+          const pressResult = await getBuildingSurfacePressure(buildingId);
+          baselinePressure = pressResult.pressure_hpa;
+          console.log(`[AttendanceBottomSheet] Live baseline: ${baselinePressure.toFixed(2)} hPa (${pressResult.source})`);
+        } catch (pressErr) {
+          console.warn('[AttendanceBottomSheet] Could not fetch live pressure, using static value:', pressErr);
+        }
+      }
 
       // Step 4: Call markAttendance with all verification data
       console.log('[AttendanceBottomSheet] Submitting attendance with multi-layer verification...');
@@ -305,7 +319,7 @@ export const AttendanceBottomSheet: React.FC<AttendanceBottomSheetProps> = ({
         universityId,
         locationData, // LocationCoordinates
         roomData.geofence_geojson, // RoomGeometry
-        roomData.baseline_pressure_hpa, // baselinePressure
+        baselinePressure, // live baseline from DB
         currentPressure, // currentPressure
         stepStates.totp.code // studentTotpCode
       );

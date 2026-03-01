@@ -238,6 +238,10 @@ export const StudentDashboard = () => {
     router.push('/(main)/mark-attendance' as any);
   };
 
+  const handleMyClasses = () => {
+    router.push('/(main)/classes' as any);
+  };
+
   const handleViewSchedule = () => {
     router.push('/(main)/view-schedule' as any);
   };
@@ -312,7 +316,7 @@ export const StudentDashboard = () => {
           <QuickActionButton
             icon="school"
             label="My Classes"
-            onPress={() => {}}
+            onPress={handleMyClasses}
             colors={colors}
           />
           <QuickActionButton
@@ -331,30 +335,41 @@ export const StudentDashboard = () => {
 
         {/* Upcoming Classes Section */}
         <Animated.View entering={FadeInUp.delay(300)}>
-          <Text style={styles.sectionTitle}>Upcoming Today</Text>
+          <Text style={styles.sectionTitle}>Today's Classes</Text>
           {isLoading ? (
             <View style={{ paddingVertical: 20, alignItems: 'center' }}>
               <ActivityIndicator size="large" color={colors.primary} />
             </View>
           ) : (() => {
-            // Filter to show only ongoing and upcoming classes (exclude completed)
-            const filteredSessions = dashboardData?.upcomingSessions?.filter((session) => {
-              const now = new Date();
-              const today = new Date().toISOString().split('T')[0];
-              const [endHours, endMinutes] = session.end_time.split(':');
-              const sessionEndTime = new Date(`${today}T${endHours}:${endMinutes}:00`);
-              // Only show classes that haven't ended yet
-              return sessionEndTime > now;
-            }) || [];
+            // Show ALL of today's sessions — ongoing, upcoming, AND completed.
+            const now = new Date();
+            const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const allTodaySessions = (dashboardData?.upcomingSessions || []).map((session) => {
+              const [endH, endM] = session.end_time.split(':');
+              const [startH, startM] = session.start_time.split(':');
+              const sessionEnd   = new Date(`${todayLocal}T${endH}:${endM}:00`);
+              const sessionStart = new Date(`${todayLocal}T${startH}:${startM}:00`);
+              const displayStatus =
+                now >= sessionStart && now < sessionEnd ? 'ongoing'
+                : now >= sessionEnd                    ? 'completed'
+                : 'upcoming';
+              return { ...session, displayStatus };
+            });
+            // Sort: ongoing first, then upcoming, then completed
+            const sorted = [
+              ...allTodaySessions.filter(s => s.displayStatus === 'ongoing'),
+              ...allTodaySessions.filter(s => s.displayStatus === 'upcoming'),
+              ...allTodaySessions.filter(s => s.displayStatus === 'completed'),
+            ];
 
-            return filteredSessions.length > 0 ? (
+            return sorted.length > 0 ? (
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.carouselContent}
                 scrollIndicatorInsets={{ bottom: 1 }}
               >
-                {filteredSessions.map((session, index) => {
+                {sorted.map((session, index) => {
                   const roomName = session.room?.room_name || session.room?.room_number || 'TBA';
                   const buildingName = session.room?.building?.name ? ` - ${session.room.building.name}` : '';
                   const location = `${roomName}${buildingName}`;
@@ -370,6 +385,7 @@ export const StudentDashboard = () => {
                       theme={theme}
                       isPrimary={index === 0}
                       delay={400 + index * 100}
+                      onPress={handleMyClasses}
                     />
                   );
                 })}
@@ -377,7 +393,7 @@ export const StudentDashboard = () => {
             ) : (
               <View style={{ paddingVertical: 20, alignItems: 'center' }}>
                 <Text style={{ color: colors.textSecondary, fontSize: 14 }}>
-                  No ongoing or upcoming classes today
+                  No classes scheduled for today
                 </Text>
               </View>
             );
@@ -386,7 +402,7 @@ export const StudentDashboard = () => {
 
         {/* Stats Section */}
         <Animated.View entering={FadeInUp.delay(500)}>
-          <Text style={styles.sectionTitle}>Your Week at a Glance</Text>
+          <Text style={styles.sectionTitle}>Your Day at a Glance</Text>
           <View style={styles.statsGrid}>
             {stats.map((stat, index) => (
               <View

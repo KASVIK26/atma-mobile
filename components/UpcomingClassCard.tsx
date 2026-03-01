@@ -1,6 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 interface UpcomingClassCardProps {
@@ -12,6 +12,7 @@ interface UpcomingClassCardProps {
   theme: string;
   isPrimary?: boolean;
   delay?: number;
+  onPress?: () => void;
 }
 
 const createStyles = (colors: any, isPrimary: boolean) =>
@@ -79,6 +80,7 @@ export const UpcomingClassCard: React.FC<UpcomingClassCardProps> = ({
   theme,
   isPrimary = false,
   delay = 0,
+  onPress,
 }) => {
   const styles = useMemo(
     () => createStyles(colors, isPrimary),
@@ -87,7 +89,7 @@ export const UpcomingClassCard: React.FC<UpcomingClassCardProps> = ({
 
   return (
     <Animated.View entering={FadeInUp.delay(delay)}>
-      <View style={styles.card}>
+      <Pressable onPress={onPress} style={({ pressed }) => [styles.card, onPress && pressed && { opacity: 0.85 }]}>
         <View style={styles.header}>
           <Text style={styles.time}>{time}</Text>
           <View style={styles.arrowIcon}>
@@ -112,7 +114,7 @@ export const UpcomingClassCard: React.FC<UpcomingClassCardProps> = ({
           />
           <Text style={styles.location}>{location}</Text>
         </View>
-      </View>
+      </Pressable>
     </Animated.View>
   );
 };

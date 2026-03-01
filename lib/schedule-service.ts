@@ -152,8 +152,8 @@ export function calculateSessionDisplayStatus(
   session: LectureSession
 ): 'completed' | 'ongoing' | 'upcoming' {
   const now = new Date();
-  const today = now.toISOString().split('T')[0]; // YYYY-MM-DD format
-  const currentTimeStr = now.toTimeString().substring(0, 8); // HH:mm:ss format
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; // local IST date, not UTC
+  const currentTimeStr = now.toTimeString().substring(0, 8); // HH:mm:ss — already local time
 
   // Session is in the past → completed
   if (session.session_date < today) {
