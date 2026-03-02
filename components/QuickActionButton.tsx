@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 import { MaterialIcons } from '@expo/vector-icons';
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -42,7 +43,7 @@ const createStyles = (colors: any) =>
     },
   });
 
-export const QuickActionButton: React.FC<QuickActionButtonProps> = ({
+const _QuickActionButton: React.FC<QuickActionButtonProps> = ({
   icon,
   label,
   onPress,
@@ -67,3 +68,6 @@ export const QuickActionButton: React.FC<QuickActionButtonProps> = ({
     </View>
   );
 };
+
+_QuickActionButton.displayName = 'QuickActionButton';
+export const QuickActionButton = React.memo(_QuickActionButton);

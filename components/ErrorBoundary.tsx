@@ -11,7 +11,8 @@
  *   </ErrorBoundary>
  */
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import * as Sentry from '@sentry/react-native';
+import { Component, ErrorInfo, ReactNode } from 'react';
 import {
     Image,
     Pressable,
@@ -45,9 +46,11 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.setState({ errorInfo });
-    // Log to console — integrate Sentry / Crashlytics here in full production
+    // Log to console
     console.error('[ErrorBoundary] Uncaught error:', error.message);
     console.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
+    // Forward to Sentry (no-op if Sentry was not initialised)
+    Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } });
   }
 
   reset = () => {

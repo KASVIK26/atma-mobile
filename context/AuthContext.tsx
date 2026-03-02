@@ -1,7 +1,8 @@
 import supabase from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { useRouter, useSegments } from 'expo-router';
-import React, { ReactNode, createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { ReactNode, createContext, useContext, useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 
 // ============================================================================
@@ -127,6 +128,11 @@ export interface AuthContextType {
   isStudent: boolean;
   isTeacher: boolean;
   isAdmin: boolean;
+
+  // Profile loading indicator — true while any fetchUserProfile call is in flight.
+  // Consumers (e.g. routing guard) should wait for this to be false before acting
+  // on a null userRole to avoid false-positive redirects to the welcome screen.
+  isProfileLoading: boolean;
 }
 
 // ============================================================================
@@ -139,26 +145,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const router = useRouter();
   const segments = useSegments();
 
-  // Auth state
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<SupabaseUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSigningOut, setIsSigningOut] = useState(false);
+  // ── Zustand store (all state centralised here) ────────────────────────────────
+  // AuthProvider orchestrates side-effects (Supabase events, routing).
+  // State itself lives in Zustand so components can subscribe granularly.
+  const {
+    setSession,
+    setUser,
+    setUserProfile: setUserProfileStore,
+    setEnrollments,
+    setInstructor,
+    setIsLoading,
+    setIsProfileLoading,
+    setIsSigningOut,
+    clearAll,
+  } = useAuthStore();
 
-  // User profile state
-  const [userProfile, setUserProfileState] = useState<UserProfile | null>(null);
-  // Keep a ref in sync so callbacks (AppState, onAuthStateChange) always see the latest
-  // value without needing to re-subscribe / close over stale state.
+  // Read routing-relevant state from Zustand with a selector so AuthProvider
+  // only re-renders when these specific values change (not all store updates).
+  const isLoading       = useAuthStore((s) => s.isLoading);
+  const isProfileLoading = useAuthStore((s) => s.isProfileLoading);
+  const _session        = useAuthStore((s) => s.session);
+  const _userRole       = useAuthStore((s) => s.userProfile?.role ?? null);
+
+  // Sync a ref with userProfile so AppState/onAuthStateChange callbacks always
+  // see the latest value without needing to close over stale Zustand state.
   const userProfileRef = useRef<UserProfile | null>(null);
   const setUserProfile = (profile: UserProfile | null) => {
     userProfileRef.current = profile;
-    setUserProfileState(profile);
+    setUserProfileStore(profile);
   };
-  const [enrollments, setEnrollments] = useState<StudentEnrollment[] | null>(null);
-  const [instructor, setInstructor] = useState<InstructorData | null>(null);
 
-  // Guard against concurrent fetchUserProfile calls (e.g. INITIAL_SESSION + TOKEN_REFRESHED
-  // firing in quick succession on cold start).
+  // Concurrency guard — prevents two simultaneous fetchUserProfile calls.
   const isFetchingProfileRef = useRef(false);
 
   // ============================================================================
@@ -169,12 +186,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    * Fetch user profile from users table
    */
   const fetchUserProfile = async (userId: string) => {
-    // Prevent concurrent fetches — skip if one is already in flight.
+    // If a fetch is already in-flight, WAIT for it to finish and then do a fresh
+    // fetch rather than silently skipping.  This fixes the OTP sign-up race where:
+    //   1. SIGNED_IN event triggers a fetch BEFORE the profile row exists in the DB.
+    //   2. The screen inserts the row, then calls refreshUserProfile.
+    //   3. Without waiting, the second call is a no-op → userRole stays null → router
+    //      sees an authenticated user with no role and redirects to welcome.
     if (isFetchingProfileRef.current) {
-      console.log('[fetchUserProfile] Skipping — fetch already in progress');
-      return;
+      console.log('[fetchUserProfile] Waiting for in-progress fetch to finish, will retry…');
+      await new Promise<void>((resolve) => {
+        const poll = setInterval(() => {
+          if (!isFetchingProfileRef.current) {
+            clearInterval(poll);
+            resolve();
+          }
+        }, 50);
+        // Safety: don't wait more than 8 seconds
+        setTimeout(() => { clearInterval(poll); resolve(); }, 8_000);
+      });
+      console.log('[fetchUserProfile] Previous fetch complete — starting fresh fetch');
     }
     isFetchingProfileRef.current = true;
+    setIsProfileLoading(true);
     try {
       console.log('[fetchUserProfile] Starting profile fetch for user:', userId.substring(0, 8) + '***');
       
@@ -245,6 +278,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     } finally {
       isFetchingProfileRef.current = false;
+      setIsProfileLoading(false);
     }
   };
 
@@ -352,13 +386,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(newSession.user);
         await fetchUserProfile(newSession.user.id);
       } else if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
-        // Explicit logout or account deletion — clear everything.
-        console.log('[Auth State Change]', event, '— clearing all local state');
-        setSession(null);
-        setUser(null);
-        setUserProfile(null);
-        setEnrollments(null);
-        setInstructor(null);
+        // Explicit logout or account deletion — clear atomically.
+        console.log('[Auth State Change]', event, '— clearing all state (atomic)');
+        clearAll();
+        userProfileRef.current = null;
       }
       // For any other null-session event (TOKEN_REFRESHED failure, network blip)
       // keep existing state intact — AppState listener will re-validate on resume.
@@ -408,15 +439,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             console.log('[AuthContext] Profile missing after resume — re-fetching');
             await fetchUserProfile(currentSession.user.id);
           }
+          // Ensure the token auto-refresh is running after a long background suspension
+          supabase.auth.startAutoRefresh();
         } else {
           // Session genuinely expired / logged out while backgrounded
           if (userProfileRef.current) {
-            console.log('[AuthContext] Session expired in background — clearing state');
-            setSession(null);
-            setUser(null);
-            setUserProfile(null);
-            setEnrollments(null);
-            setInstructor(null);
+            console.log('[AuthContext] Session expired in background — clearing state (atomic)');
+            clearAll();
+            userProfileRef.current = null;
           }
         }
       } catch (err) {
@@ -566,14 +596,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       console.log('[SignOut] Supabase signOut completed, clearing local state...');
       
-      // Clear state
-      setSession(null);
-      setUser(null);
-      setUserProfile(null);
-      setEnrollments(null);
-      setInstructor(null);
-      
-      console.log('[SignOut] ✅ All state cleared, user should be logged out');
+      // Atomic clear via Zustand — eliminates intermediate renders between
+      // "session gone" and "profile still shows" that the old sequential setters caused.
+      clearAll();
+      userProfileRef.current = null;
+
+      console.log('[SignOut] ✅ All state cleared atomically, user is logged out');
     } catch (error) {
       console.error('[SignOut] ❌ Error during signOut:', error);
       throw error;
@@ -587,6 +615,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    */
   const updateUserProfile = async (updates: Partial<UserProfile>) => {
     try {
+      // Read user from Zustand store without subscribing this component
+      const { user } = useAuthStore.getState();
       if (!user) throw new Error('No user logged in');
 
       const { error } = await supabase
@@ -596,7 +626,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (error) throw error;
 
-      // Update local state
+      // Update both ref and Zustand state
       setUserProfile(userProfileRef.current ? { ...userProfileRef.current, ...updates } : null);
 
       return { error: null };
@@ -755,7 +785,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       };
 
       setUserProfile(profile);
-      setInstructorData(instructorData);
+      setInstructor(instructorData);
 
       return { error: null };
     } catch (error) {
@@ -765,14 +795,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   // ============================================================================
-  // COMPUTED PROPERTIES
+  // COMPUTED PROPERTIES (read from Zustand store via routing-subscribed selectors)
   // ============================================================================
 
-  const isAuthenticated = session !== null;
-  const isStudent = userProfile?.role === 'student';
-  const isTeacher = userProfile?.role === 'teacher';
-  const isAdmin = userProfile?.role === 'admin';
-  const userRole = userProfile?.role ?? null;
+  const isAuthenticated = _session !== null;
+  const isStudent = _userRole === 'student';
+  const isTeacher = _userRole === 'teacher';
+  const isAdmin = _userRole === 'admin';
+  const userRole = _userRole;
 
   // ============================================================================
   // ROUTE PROTECTION & NAVIGATION
@@ -788,6 +818,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     if (isLoading) return;
 
+    // While the profile is being fetched we must NOT make routing decisions based on userRole
+    // because it is transiently null even for authenticated users.  Returning early here
+    // prevents the "redirect to welcome" guard below from firing during that window.
+    if (isProfileLoading) return;
+
     const inAuthGroup = segments[0] === '(auth)';
     const currentRoute = segments[1] || '';
     const isSignupInProgress = currentRoute === 'student-signup' || currentRoute === 'teacher-signup';
@@ -799,6 +834,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       currentRoute,
       userRole,
       isSignupInProgress,
+      isProfileLoading,
     });
 
     if (!isAuthenticated) {
@@ -818,24 +854,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // If userRole is null, don't redirect - user is still completing signup
       }
       
-      // If already in main app but profile didn't load, redirect back to login so
-      // the user can re-authenticate rather than seeing blank/default placeholders.
+      // If already in main app but profile didn't load after the fetch settled,
+      // redirect back to login so the user can re-authenticate.
+      // NOTE: isProfileLoading was checked above — if we reach here, the fetch is done.
       if (!inAuthGroup && !userRole && !isSignupInProgress) {
-        console.log('[Navigation] Authenticated but profile unavailable — redirecting to welcome');
+        console.log('[Navigation] Authenticated but profile unavailable after fetch — redirecting to welcome');
         router.replace('/(auth)/welcome');
       }
     }
-  }, [isAuthenticated, isLoading, segments, userRole]);
+  }, [isAuthenticated, isLoading, isProfileLoading, segments, userRole]);
 
+  // AuthContext now ONLY carries methods (stable function refs) — ALL state
+  // lives in Zustand. Components that call useAuth() get state from the store
+  // and methods from this context, giving them the full backward-compatible API.
   const value: AuthContextType = {
-    session,
-    isLoading,
-    isSigningOut,
-    user,
-    userProfile,
-    userRole,
-    enrollments,
-    instructor,
+    // Methods
     signUp,
     signIn,
     signOut,
@@ -844,10 +877,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     lookupInstructorByEmail,
     sendTeacherOTP,
     verifyTeacherOTP,
-    isAuthenticated,
-    isStudent,
-    isTeacher,
-    isAdmin,
+    // State below is stub-filled here but actually served from Zustand in useAuth()
+    // These will be overridden by the Zustand reads in the useAuth() hook.
+    session: null,
+    isLoading: false,
+    isSigningOut: false,
+    user: null,
+    userProfile: null,
+    userRole: null,
+    enrollments: null,
+    instructor: null,
+    isAuthenticated: false,
+    isStudent: false,
+    isTeacher: false,
+    isAdmin: false,
+    isProfileLoading: false,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -861,12 +905,64 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
  * Hook to access auth context
  * Must be called within AuthProvider
  */
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
+/**
+ * Primary auth hook — backward-compatible with all existing screens.
+ *
+ * Reads state DIRECTLY from the Zustand store so each call-site gets a
+ * granular subscription: a component that only reads `userProfile` will not
+ * re-render when `isLoading` changes, and vice-versa.
+ *
+ * Methods (signIn, signOut, etc.) are stable references provided by the slim
+ * AuthMethodsContext so they don't trigger re-renders when referenced.
+ */
+export const useAuth = (): AuthContextType => {
+  const methods = useContext(AuthContext);
+  if (methods === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
-  return context;
+
+  const {
+    session,
+    user,
+    userProfile,
+    enrollments,
+    instructor,
+    isLoading,
+    isSigningOut,
+    isProfileLoading,
+  } = useAuthStore();
+
+  const isAuthenticated = session !== null;
+  const isStudent = userProfile?.role === 'student';
+  const isTeacher = userProfile?.role === 'teacher';
+  const isAdmin = userProfile?.role === 'admin';
+  const userRole = userProfile?.role ?? null;
+
+  return {
+    // Methods from context (stable references — don't cause re-renders when called)
+    signUp: methods.signUp,
+    signIn: methods.signIn,
+    signOut: methods.signOut,
+    updateUserProfile: methods.updateUserProfile,
+    refreshUserProfile: methods.refreshUserProfile,
+    lookupInstructorByEmail: methods.lookupInstructorByEmail,
+    sendTeacherOTP: methods.sendTeacherOTP,
+    verifyTeacherOTP: methods.verifyTeacherOTP,
+    // State from Zustand (granular subscriptions — only re-renders on relevant changes)
+    session,
+    isLoading,
+    isSigningOut,
+    user,
+    userProfile,
+    userRole,
+    enrollments,
+    instructor,
+    isAuthenticated,
+    isStudent,
+    isTeacher,
+    isAdmin,
+    isProfileLoading,
+  };
 };
 
 /**

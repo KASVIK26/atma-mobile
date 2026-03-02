@@ -1,6 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+/* eslint-disable react-hooks/rules-of-hooks */
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 interface UpcomingClassCardProps {
@@ -71,7 +72,7 @@ const createStyles = (colors: any, isPrimary: boolean) =>
     },
   });
 
-export const UpcomingClassCard: React.FC<UpcomingClassCardProps> = ({
+const _UpcomingClassCard: React.FC<UpcomingClassCardProps> = ({
   time,
   courseCode,
   courseName,
@@ -118,3 +119,6 @@ export const UpcomingClassCard: React.FC<UpcomingClassCardProps> = ({
     </Animated.View>
   );
 };
+
+_UpcomingClassCard.displayName = 'UpcomingClassCard';
+export const UpcomingClassCard = React.memo(_UpcomingClassCard);

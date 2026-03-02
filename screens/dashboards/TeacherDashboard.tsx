@@ -3,10 +3,10 @@ import { StatsCard } from '@/components/StatsCard';
 import { UpcomingClassCard } from '@/components/UpcomingClassCard';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { DashboardStats, formatTime, getTodaysDashboardData } from '@/lib/dashboard-service';
-import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTeacherDashboardQuery } from '@/hooks/queries/useDashboardQuery';
+import { formatTime } from '@/lib/dashboard-service';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useMemo } from 'react';
 import {
     ActivityIndicator,
     Image,
@@ -130,83 +130,43 @@ const createStyles = (colors: any, theme: string) =>
     },
   });
 
-const defaultStats = [
-  { icon: 'event-available', number: '0', label: 'Total Classes', color: '#10B981' },
-  { icon: 'done-all', number: '0', label: 'Completed Sessions', color: '#2563EB' },
-];
-
 export const TeacherDashboard = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, theme } = useTheme();
   const { userProfile, instructor } = useAuth();
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
-  const [dashboardData, setDashboardData] = useState<DashboardStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [stats, setStats] = useState(defaultStats);
 
-  // Memoized fetch function that can be called from multiple places
-  const fetchDashboardData = useCallback(async () => {
-    if (!instructor?.id || !userProfile?.university_id) {
-      console.warn('[TeacherDashboard] Missing instructor data');
-      setIsLoading(false);
-      setIsRefreshing(false);
-      return;
-    }
+  const { data: dashboardData, isLoading, isFetching, refetch } = useTeacherDashboardQuery({
+    instructorId: instructor?.id,
+    universityId: userProfile?.university_id,
+  });
 
-    try {
-      const data = await getTodaysDashboardData(
-        instructor.id,
-        userProfile.university_id,
-        'teacher'  // Explicitly pass teacher role
-      );
-
-      if (data) {
-        setDashboardData(data);
-        // Update stats with real data
-        setStats([
-          {
-            icon: 'event-available',
-            number: String(data.totalClasses),
-            label: 'Total Classes',
-            color: '#10B981',
-          },
-          {
-            icon: 'done-all',
-            number: String(data.attendanceStreak), // This returns completed sessions count
-            label: 'Completed Sessions',
-            color: '#2563EB',
-          },
-        ]);
-        console.log('[TeacherDashboard] Dashboard data loaded successfully');
-      }
-    } catch (error) {
-      console.error('[TeacherDashboard] Error fetching dashboard data:', error);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [instructor?.id, userProfile?.university_id]);
-
-  // Initial data load on mount
-  useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
-
-  // Auto-refresh when screen comes into focus (e.g., after creating special class)
+  // Auto-refresh when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      console.log('[TeacherDashboard] Screen focused - auto-refreshing');
-      setIsRefreshing(true);
-      fetchDashboardData();
-    }, [fetchDashboardData])
+      refetch();
+    }, [refetch])
   );
 
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    fetchDashboardData();
-  };
+  const stats = useMemo(() => [
+    {
+      icon: 'event-available',
+      number: String(dashboardData?.totalClasses ?? 0),
+      label: 'Total Classes',
+      color: '#10B981',
+    },
+    {
+      icon: 'done-all',
+      number: String(dashboardData?.attendanceStreak ?? 0),
+      label: 'Completed Sessions',
+      color: '#2563EB',
+    },
+  ], [dashboardData?.totalClasses, dashboardData?.attendanceStreak]);
+
+  const isRefreshing = isFetching && !isLoading;
+
+  const handleRefresh = useCallback(() => { refetch(); }, [refetch]);
 
   // Get time-based greeting
   const getTimeBasedGreeting = () => {
@@ -222,11 +182,6 @@ export const TeacherDashboard = () => {
 
   const greeting = getTimeBasedGreeting();
   const teacherName = userProfile?.first_name || 'Teacher';
-
-  useEffect(() => {
-    StatusBar.setBackgroundColor('transparent');
-    StatusBar.setTranslucent(true);
-  }, []);
 
   const handleProfilePress = () => {
     router.push('/profile' as any);

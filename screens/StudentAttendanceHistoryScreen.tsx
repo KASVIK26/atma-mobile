@@ -1,19 +1,19 @@
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { supabase } from '@/lib/supabase';
+import { StudentAttendanceRecord, useStudentAttendanceHistoryQuery } from '@/hooks/queries/useAttendanceHistoryQuery';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Image,
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Image,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,10 +42,7 @@ const createStyles = (colors: any) =>
     brandIcon: {
       width: 40,
       height: 40,
-      borderRadius: 20,
-      backgroundColor: colors.primaryLight,
-      justifyContent: 'center',
-      alignItems: 'center',
+      borderRadius: 10,
     },
     brandText: {
       fontSize: 18,
@@ -206,16 +203,8 @@ const createStyles = (colors: any) =>
     },
   });
 
-interface AttendanceRecord {
-  id: string;
-  courseName: string;
-  courseCode: string;
-  courseDate: string;
-  courseTime: string;
-  status: 'present' | 'absent' | 'late' | 'excused';
-  markedAt: string;
-  validationScore?: number;
-}
+// Use the canonical type from the query hook
+type AttendanceRecord = StudentAttendanceRecord;
 
 export const StudentAttendanceHistoryScreen = () => {
   const router = useRouter();
@@ -226,94 +215,20 @@ export const StudentAttendanceHistoryScreen = () => {
 
   const [filterMode, setFilterMode] = useState<'week' | 'month'>('week');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    StatusBar.setBackgroundColor('transparent');
-    StatusBar.setTranslucent(true);
-  }, []);
+  const { data, isLoading: loading, isFetching, refetch } = useStudentAttendanceHistoryQuery({
+    userId: userProfile?.id,
+    filterMode,
+  });
 
-  const fetchHistory = useCallback(async (isRefresh = false) => {
-    if (!userProfile?.id) return;
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+  const refreshing = isFetching && !loading;
 
-    try {
-      const now = new Date();
-      const startDate = new Date();
-      if (filterMode === 'week') {
-        startDate.setDate(now.getDate() - 7);
-      } else {
-        startDate.setDate(now.getDate() - 30);
-      }
-
-      const { data, error } = await supabase
-        .from('attendance_records')
-        .select(`
-          id,
-          attendance_status,
-          marked_at,
-          validation_score,
-          lecture_sessions!inner(
-            session_date,
-            start_time,
-            courses!inner(
-              name,
-              code
-            )
-          )
-        `)
-        .eq('student_id', userProfile.id)
-        .gte('marked_at', startDate.toISOString())
-        .order('marked_at', { ascending: false });
-
-      if (error) {
-        console.error('[StudentHistory] Fetch error:', error);
-        return;
-      }
-
-      const mapped: AttendanceRecord[] = (data || []).map((row: any) => {
-        const session = row.lecture_sessions;
-        const course = session?.courses;
-        const markedDate = new Date(row.marked_at);
-        return {
-          id: row.id,
-          courseName: course?.name ?? 'Unknown Course',
-          courseCode: course?.code ?? '',
-          courseDate: session?.session_date
-            ? new Date(session.session_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-            : markedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          courseTime: markedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-          status: row.attendance_status as AttendanceRecord['status'],
-          markedAt: row.marked_at,
-          validationScore: row.validation_score ? Number(row.validation_score) : undefined,
-        };
-      });
-
-      setRecords(mapped);
-    } catch (err) {
-      console.error('[StudentHistory] Unexpected error:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [userProfile?.id, filterMode]);
-
-  // Fetch on mount + whenever filter changes
-  useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
-
-  // Re-fetch every time the screen comes into focus (e.g. after marking attendance)
+  // Re-fetch every time the screen comes into focus
   useFocusEffect(
-    useCallback(() => {
-      fetchHistory();
-    }, [fetchHistory])
+    useCallback(() => { refetch(); }, [refetch])
   );
 
-  const attendanceRecords = records;
+  const attendanceRecords = data ?? [];
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -372,13 +287,11 @@ export const StudentAttendanceHistoryScreen = () => {
         style={[styles.header, { paddingTop: insets.top }]}
       >
         <View style={styles.headerBrand}>
-          <View style={[styles.brandIcon, { borderRadius: 10, width: 40, height: 40, overflow: 'hidden' }]}>
-            <Image
-              source={require('@/assets/images/ATMA-inApp.png')}
-              style={{ width: 40, height: 40, borderRadius: 10 }}
-              resizeMode="contain"
-            />
-          </View>
+          <Image
+            source={require('@/assets/images/ATMA-inApp.png')}
+            style={styles.brandIcon}
+            resizeMode="contain"
+          />
           <Text style={styles.brandText}>ATMA</Text>
         </View>
         <Pressable style={{ width: 40, height: 40 }} onPress={handleProfilePress}>

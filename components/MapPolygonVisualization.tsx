@@ -1,9 +1,9 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import WebView from 'react-native-webview';
 
 interface MapPolygonVisualizationProps {
-  polygon: Array<[number, number]>; // [longitude, latitude]
+  polygon: [number, number][]; // [longitude, latitude]
   currentLocation?: {
     latitude: number;
     longitude: number;
@@ -15,7 +15,7 @@ interface MapPolygonVisualizationProps {
 }
 
 const createMapHTML = (
-  polygon: Array<[number, number]>,
+  polygon: [number, number][],
   currentLocation?: MapPolygonVisualizationProps['currentLocation'],
   title: string = 'Classroom Location',
   isInside: boolean = false
@@ -26,13 +26,11 @@ const createMapHTML = (
 
   // Convert [lon, lat] to [lat, lon] for Leaflet
   const leafletPolygon = polygon.map(([lon, lat]) => [lat, lon]);
-  const leafletCenter = [centerLat, centerLon];
   const leafletCurrent = currentLocation ? [currentLocation.latitude, currentLocation.longitude] : null;
 
   // Color based on inside/outside status
-  const polygonColor = isInside ? '#4CAF50' : '#F44336'; // Green if inside, red if outside
+  const fillColor = isInside ? '#4CAF50' : '#F44336'; // Green if inside, red if outside
   const polygonBorder = isInside ? '#388E3C' : '#D32F2F';
-  const fillColor = isInside ? '#4CAF50' : '#F44336';
 
   return `
     <!DOCTYPE html>

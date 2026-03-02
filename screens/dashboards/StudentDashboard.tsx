@@ -4,13 +4,15 @@ import { StatsCard } from '@/components/StatsCard';
 import { UpcomingClassCard } from '@/components/UpcomingClassCard';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { DashboardStats, formatTime, getTodaysDashboardData } from '@/lib/dashboard-service';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useStudentDashboardQuery } from '@/hooks/queries/useDashboardQuery';
+import { formatTime } from '@/lib/dashboard-service';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useMemo } from 'react';
 import {
     ActivityIndicator,
     Image,
     Pressable,
+    RefreshControl,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -142,93 +144,64 @@ const studentClasses = [
   // This will be populated with real data from dashboard service
 ];
 
-const defaultStats = [
-  { icon: 'event-available', number: '0', label: 'Total Classes', color: '#10B981' },
-  { icon: 'trending-up', number: '0', label: 'Attendance Streak', color: '#2563EB' },
-  { icon: 'percent', number: '0%', label: 'Weekly Attendance', color: '#F59E0B' },
-];
-
 export const StudentDashboard = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, theme } = useTheme();
   const { userProfile } = useAuth();
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
-  
-  const [dashboardData, setDashboardData] = useState<DashboardStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [stats, setStats] = useState(defaultStats);
+
+  // ── Server state via TanStack Query ─────────────────────────────────────────
+  // Cache key: ['dashboard', 'student', userId, universityId]
+  // staleTime 2 min → zero extra RPCs on tab switch within that window.
+  const {
+    data: dashboardData,
+    isLoading,
+    isFetching,
+    refetch,
+  } = useStudentDashboardQuery({
+    userId: userProfile?.id,
+    universityId: userProfile?.university_id,
+  });
+
+  // Refresh data every time this screen comes into focus (e.g. after marking attendance).
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
+
+  // Stats derived from dashboard data — recomputed only when data changes.
+  const stats = useMemo(() => [
+    {
+      icon: 'event-available',
+      number: String(dashboardData?.totalClasses ?? 0),
+      label: 'Total Classes',
+      color: '#10B981',
+    },
+    {
+      icon: 'trending-up',
+      number: String(dashboardData?.attendanceStreak ?? 0),
+      label: 'Attendance Streak',
+      color: '#2563EB',
+    },
+    {
+      icon: 'percent',
+      number: `${dashboardData?.weeklyAttendancePercentage ?? 0}%`,
+      label: 'Weekly Attendance',
+      color: '#F59E0B',
+    },
+  ], [dashboardData]);
 
   // Get time-based greeting
-  const getTimeBasedGreeting = () => {
+  const greeting = useMemo(() => {
     const hour = new Date().getHours();
-    if (hour < 12) {
-      return 'Good morning';
-    } else if (hour < 18) {
-      return 'Good afternoon';
-    } else {
-      return 'Good evening';
-    }
-  };
-
-  const greeting = getTimeBasedGreeting();
-  const userName = userProfile?.first_name || 'there';
-
-  // Fetch dashboard data on mount
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      if (!userProfile?.id || !userProfile?.university_id) {
-        console.warn('[StudentDashboard] Missing user profile data');
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        const data = await getTodaysDashboardData(
-          userProfile.id,
-          userProfile.university_id,
-          userProfile.role || 'student'  // Pass user's role for TOTP visibility
-        );
-
-        if (data) {
-          setDashboardData(data);
-          // Update stats with real data
-          setStats([
-            {
-              icon: 'event-available',
-              number: String(data.totalClasses),
-              label: 'Total Classes',
-              color: '#10B981',
-            },
-            {
-              icon: 'trending-up',
-              number: String(data.attendanceStreak),
-              label: 'Attendance Streak',
-              color: '#2563EB',
-            },
-            {
-              icon: 'percent',
-              number: `${data.weeklyAttendancePercentage}%`,
-              label: 'Weekly Attendance',
-              color: '#F59E0B',
-            },
-          ]);
-          console.log('[StudentDashboard] Dashboard data loaded successfully');
-        }
-      } catch (error) {
-        console.error('[StudentDashboard] Error fetching dashboard data:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchDashboardData();
-  }, [userProfile?.id, userProfile?.university_id]);
-
-  useEffect(() => {
-    StatusBar.setBackgroundColor('transparent');
-    StatusBar.setTranslucent(true);
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
   }, []);
+
+  const userName = userProfile?.first_name || 'there';
 
   const handleProfilePress = () => {
     router.push('/profile' as any);
@@ -293,6 +266,14 @@ export const StudentDashboard = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         scrollIndicatorInsets={{ right: 1 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isFetching && !isLoading}
+            onRefresh={refetch}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
       >
         {/* Greeting Card with Attendance */}
         <Animated.View entering={FadeInUp.delay(100)} style={styles.greetingCard}>

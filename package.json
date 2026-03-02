@@ -15,7 +15,9 @@
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
+    "@sentry/react-native": "^8.2.0",
     "@supabase/supabase-js": "2.97.0",
+    "@tanstack/react-query": "^5.90.21",
     "@turf/turf": "^7.3.4",
     "expo": "~54.0.33",
     "expo-constants": "~18.0.13",
@@ -40,6 +42,7 @@
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-mmkv": "^4.1.2",
     "react-native-otp-inputs": "7.4.0",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
@@ -47,13 +50,15 @@
     "react-native-toast-message": "2.3.3",
     "react-native-web": "~0.21.0",
     "react-native-webview": "^13.16.0",
-    "react-native-worklets": "0.5.1"
+    "react-native-worklets": "0.5.1",
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
     "baseline-browser-mapping": "^2.10.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
+    "react-native-nitro-modules": "^0.34.1",
     "typescript": "~5.9.2"
   },
   "private": true

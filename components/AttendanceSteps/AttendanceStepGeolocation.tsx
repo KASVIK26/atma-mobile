@@ -203,7 +203,7 @@ export const AttendanceStepGeolocation: React.FC<AttendanceStepGeolocationProps>
           {isLoading ? 'Loading...' : roomName}
         </Text>
         {distance !== null && (
-          <Text style={styles.infoValue} style={{ marginTop: 8, fontSize: 12, color: colors.textSecondary }}>
+          <Text style={[styles.infoValue, { marginTop: 8, fontSize: 12, color: colors.textSecondary }]}>
             Distance: {distance.toFixed(1)}m (12m required)
           </Text>
         )}
@@ -214,7 +214,7 @@ export const AttendanceStepGeolocation: React.FC<AttendanceStepGeolocationProps>
         <View style={styles.warningRow}>
           <MaterialIcons name="info" size={16} color="#F59E0B" style={{ marginTop: 2 }} />
           <Text style={styles.warningText}>
-            Ensure your device's location services are enabled before checking in
+            Ensure your device&apos;s location services are enabled before checking in
           </Text>
         </View>
       </View>

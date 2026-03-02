@@ -44,7 +44,7 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
 
   useEffect(() => {
     position.value = withTiming(value ? 1 : 0, { duration: 300 });
-  }, [value]);
+  }, [value, position]);
 
   const thumbAnimatedStyle = useAnimatedStyle(() => {
     const translateX = interpolate(position.value, [0, 1], [0, 22]);

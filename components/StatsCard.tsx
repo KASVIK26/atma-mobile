@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 import { MaterialIcons } from '@expo/vector-icons';
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -44,7 +45,7 @@ const createStyles = (colors: any) =>
     },
   });
 
-export const StatsCard: React.FC<StatsCardProps> = ({
+const _StatsCard: React.FC<StatsCardProps> = ({
   icon,
   number,
   label,
@@ -64,3 +65,6 @@ export const StatsCard: React.FC<StatsCardProps> = ({
     </View>
   );
 };
+
+_StatsCard.displayName = 'StatsCard';
+export const StatsCard = React.memo(_StatsCard);

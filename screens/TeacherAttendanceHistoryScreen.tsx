@@ -1,23 +1,23 @@
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { TeacherCourseAttendance, getFilteredAttendanceHistory, getInstructorCourses, getProgramsAndBranches, getSectionsForFilters, getSemestersForProgram } from '@/lib/attendance-service';
+import { useTeacherAttendanceHistoryQuery } from '@/hooks/queries/useAttendanceHistoryQuery';
+import { TeacherCourseAttendance, getInstructorCourses, getProgramsAndBranches, getSectionsForFilters, getSemestersForProgram } from '@/lib/attendance-service';
 import { supabase } from '@/lib/supabase';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Dimensions,
-    Image,
-    Modal,
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Dimensions,
+  Image,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -46,10 +46,7 @@ const createStyles = (colors: any) =>
     brandIcon: {
       width: 40,
       height: 40,
-      borderRadius: 20,
-      backgroundColor: colors.primaryLight,
-      justifyContent: 'center',
-      alignItems: 'center',
+      borderRadius: 10,
     },
     brandText: {
       fontSize: 18,
@@ -262,9 +259,22 @@ export const TeacherAttendanceHistoryScreen = () => {
   // ============================================
   // DATA STATE
   // ============================================
-  const [historyData, setHistoryData] = useState<TeacherCourseAttendance[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const { data: historyData = [], isLoading, isFetching, refetch } = useTeacherAttendanceHistoryQuery({
+    instructorId: instructor?.id,
+    universityId: userProfile?.university_id,
+    filters: {
+      timePeriod: filters.timePeriod,
+      courseId: filters.course?.id,
+      sectionId: filters.section?.id,
+    },
+  });
+
+  const isRefreshing = isFetching && !isLoading;
+
+  // Auto-refresh on screen focus
+  useFocusEffect(
+    useCallback(() => { refetch(); }, [refetch])
+  );
 
   // ============================================
   // DETAIL MODAL STATE
@@ -365,7 +375,6 @@ export const TeacherAttendanceHistoryScreen = () => {
     setFilters({...tempFilters});
     setShowFilterModal(false);
     setActiveDropdown(null);
-    setIsRefreshing(true);
   };
 
   const handleResetFilters = () => {
@@ -378,35 +387,6 @@ export const TeacherAttendanceHistoryScreen = () => {
       section: null,
     });
   };
-
-  // ============================================
-  // FETCH DATA
-  // ============================================
-
-  const fetchAttendanceData = useCallback(async () => {
-    if (!instructor?.id || !userProfile?.university_id) {
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      const filteredData = await getFilteredAttendanceHistory(
-        instructor.id,
-        userProfile.university_id,
-        {
-          timePeriod: filters.timePeriod,
-          courseId: filters.course?.id,
-          sectionId: filters.section?.id,
-        }
-      );
-      setHistoryData(filteredData);
-    } catch (error) {
-      console.error('[AttendanceHistory] Error:', error);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [instructor?.id, userProfile?.university_id, filters]);
 
   const fetchDetailStudents = useCallback(async (lectureSessionId: string) => {
     setIsLoadingDetail(true);
@@ -464,23 +444,7 @@ export const TeacherAttendanceHistoryScreen = () => {
     fetchDetailStudents(record.id);
   }, [fetchDetailStudents]);
 
-  // Initial load
-  useEffect(() => {
-    fetchAttendanceData();
-  }, [fetchAttendanceData]);
-
-  // Auto-refresh on screen focus
-  useFocusEffect(
-    useCallback(() => {
-      setIsRefreshing(true);
-      fetchAttendanceData();
-    }, [fetchAttendanceData])
-  );
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    fetchAttendanceData();
-  };
+  const handleRefresh = useCallback(() => { refetch(); }, [refetch]);
 
   const handleProfilePress = () => {
     router.push('/(main)/profile' as any);
@@ -500,13 +464,11 @@ export const TeacherAttendanceHistoryScreen = () => {
         style={[styles.header, { paddingTop: insets.top }]}
       >
         <View style={styles.headerBrand}>
-          <View style={[styles.brandIcon, { borderRadius: 10, width: 40, height: 40, overflow: 'hidden' }]}>
-            <Image
-              source={require('@/assets/images/ATMA-inApp.png')}
-              style={{ width: 40, height: 40, borderRadius: 10 }}
-              resizeMode="contain"
-            />
-          </View>
+          <Image
+            source={require('@/assets/images/ATMA-inApp.png')}
+            style={styles.brandIcon}
+            resizeMode="contain"
+          />
           <Text style={styles.brandText}>ATMA</Text>
         </View>
         <Pressable style={{ width: 40, height: 40 }} onPress={handleProfilePress}>

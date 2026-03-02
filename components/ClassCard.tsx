@@ -15,7 +15,7 @@ interface ClassCardProps {
   theme: 'light' | 'dark';
 }
 
-export const ClassCard: React.FC<ClassCardProps> = ({
+const _ClassCard: React.FC<ClassCardProps> = ({
   courseCode,
   courseName,
   time,
@@ -70,6 +70,8 @@ export const ClassCard: React.FC<ClassCardProps> = ({
     </Animated.View>
   );
 };
+
+export const ClassCard = React.memo(_ClassCard);
 
 const getStyles = (colors: any, theme: string) =>
   StyleSheet.create({
