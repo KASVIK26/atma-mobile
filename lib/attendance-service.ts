@@ -659,11 +659,14 @@ export async function getInstructorAttendanceHistory(
  * Get the most recent TOTP session for a given lecture session.
  *
  * Returns timing data that is fully anchored to server time:
- *  - server_remaining_ms  : milliseconds left from the server's perspective at the moment
- *                           the response was received (device-clock-drift-free)
- *  - fetch_time_ms        : device Date.now() captured when the response arrived
- *                           → elapsed = Date.now() - fetch_time_ms, so
- *                             current_remaining = server_remaining_ms - elapsed
+ *  - server_remaining_ms           : milliseconds left from the server's perspective at the moment
+ *                                    the response was received (device-clock-drift-free)
+ *  - fetch_time_ms                 : device Date.now() captured when the response arrived
+ *                                    → elapsed = Date.now() - fetch_time_ms, so
+ *                                      current_remaining = server_remaining_ms - elapsed
+ *  - attendance_marking_enabled    : true only after teacher pressed "Start Attendance"
+ *  - teacher_baseline_pressure_hpa : barometer reading captured from teacher device at
+ *                                    session start — use as floor-verification baseline
  */
 export async function getTotpSessionForSession(
   lectureSessionId: string
@@ -673,13 +676,15 @@ export async function getTotpSessionForSession(
   updated_at: string;
   server_remaining_ms: number;
   fetch_time_ms: number;
+  attendance_marking_enabled: boolean;
+  teacher_baseline_pressure_hpa: number | null;
 } | null> {
   try {
     // Run the TOTP query and clock-offset calibration in parallel
     const [{ data: totpList, error }, clockOffsetMs] = await Promise.all([
       supabase
         .from('totp_sessions')
-        .select('code, expires_at, updated_at')
+        .select('code, expires_at, updated_at, attendance_marking_enabled, teacher_baseline_pressure_hpa')
         .eq('lecture_session_id', lectureSessionId)
         .order('updated_at', { ascending: false })
         .limit(1),
@@ -712,10 +717,103 @@ export async function getTotpSessionForSession(
       updated_at: totp.updated_at,
       server_remaining_ms: serverRemainingMs,
       fetch_time_ms: fetchTimeMs,
+      attendance_marking_enabled: totp.attendance_marking_enabled ?? false,
+      teacher_baseline_pressure_hpa: totp.teacher_baseline_pressure_hpa ?? null,
     };
   } catch (error) {
     console.error('[AttendanceService] Error fetching TOTP:', error);
     return null;
+  }
+}
+
+/**
+ * Teacher action: "Start Attendance"
+ *
+ * 1. Writes the teacher's live barometer reading as the calibrated baseline
+ *    for student floor verification (replaces hourly Open-Meteo value).
+ * 2. Sets attendance_marking_enabled = true so students can start marking.
+ *
+ * Call this when the teacher presses the "Start Attendance" button on
+ * TeacherStartAttendanceScreen.
+ *
+ * @param lectureSessionId   - The active lecture session's UUID
+ * @param teacherPressureHpa - Live barometer reading from the teacher's device (hPa).
+ *                             Pass null if the device has no barometer — the flag will
+ *                             still be enabled; students without barometer data simply
+ *                             skip floor verification.
+ * @returns success flag and optional error message
+ */
+export async function startAttendanceSession(
+  lectureSessionId: string,
+  teacherPressureHpa: number | null
+): Promise<{ success: boolean; message: string }> {
+  try {
+    console.log('[AttendanceService] Starting attendance session:', lectureSessionId);
+    console.log('[AttendanceService] Teacher baseline pressure:', teacherPressureHpa, 'hPa');
+
+    const updatePayload: Record<string, any> = {
+      attendance_marking_enabled: true,
+    };
+    if (teacherPressureHpa !== null) {
+      updatePayload.teacher_baseline_pressure_hpa = teacherPressureHpa;
+    }
+
+    const { data: updatedRows, error } = await supabase
+      .from('totp_sessions')
+      .update(updatePayload)
+      .eq('lecture_session_id', lectureSessionId)
+      .select('id, attendance_marking_enabled, teacher_baseline_pressure_hpa');
+
+    if (error) {
+      console.error('[AttendanceService] Failed to start attendance session:', error);
+      return { success: false, message: error.message };
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      // Supabase returns success with 0 rows when RLS blocks the update.
+      // The teacher's UPDATE policy may be missing — run TEACHER_BASELINE_PRESSURE_MIGRATION.sql.
+      console.error('[AttendanceService] ❌ 0 rows updated — RLS likely blocking the UPDATE for this teacher role');
+      return {
+        success: false,
+        message: 'Permission denied: could not update attendance session. Check RLS policies (run TEACHER_BASELINE_PRESSURE_MIGRATION.sql in Supabase).',
+      };
+    }
+
+    console.log('[AttendanceService] ✅ Attendance session started, marking enabled:', updatedRows[0]);
+    return { success: true, message: 'Attendance marking has been enabled for students' };
+  } catch (error) {
+    console.error('[AttendanceService] Error starting attendance session:', error);
+    return { success: false, message: String(error) };
+  }
+}
+
+/**
+ * Check whether attendance marking is currently enabled for a session.
+ * Used by students to show a "waiting for teacher" state instead of the
+ * mark-attendance flow.
+ *
+ * @param lectureSessionId - The lecture session UUID
+ * @returns { enabled: boolean, teacherPressure: number | null }
+ */
+export async function getAttendanceMarkingStatus(
+  lectureSessionId: string
+): Promise<{ enabled: boolean; teacherPressure: number | null }> {
+  try {
+    const { data, error } = await supabase
+      .from('totp_sessions')
+      .select('attendance_marking_enabled, teacher_baseline_pressure_hpa')
+      .eq('lecture_session_id', lectureSessionId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return { enabled: false, teacherPressure: null };
+    }
+    return {
+      enabled: data.attendance_marking_enabled ?? false,
+      teacherPressure: data.teacher_baseline_pressure_hpa ?? null,
+    };
+  } catch {
+    return { enabled: false, teacherPressure: null };
   }
 }
 

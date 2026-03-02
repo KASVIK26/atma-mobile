@@ -1,6 +1,7 @@
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { TeacherCourseAttendance, getInstructorActiveSession, getTotpSessionForSession } from '@/lib/attendance-service';
+import { TeacherCourseAttendance, getInstructorActiveSession, getTotpSessionForSession, startAttendanceSession } from '@/lib/attendance-service';
+import { getBarometerReading } from '@/lib/barometer-service';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -29,6 +30,10 @@ type TotpRecord = {
   server_remaining_ms: number;
   /** device Date.now() snapshot when the fetch response arrived */
   fetch_time_ms: number;
+  /** true after teacher pressed Start Attendance */
+  attendance_marking_enabled: boolean;
+  /** teacher's live barometer reading captured at session start (hPa) */
+  teacher_baseline_pressure_hpa: number | null;
 };
 
 /**
@@ -150,6 +155,11 @@ export const TeacherStartAttendanceScreen = () => {
   const [totpWindowSec,     setTotpWindowSec]     = useState(TOTP_CYCLE_SEC);
   const [totpTimeRemaining, setTotpTimeRemaining] = useState(0);
 
+  // ── Attendance session state ───────────────────────────────────────────────
+  const [attendanceEnabled,    setAttendanceEnabled]    = useState(false);
+  const [isStartingAttendance, setIsStartingAttendance] = useState(false);
+  const [startAttendanceError, setStartAttendanceError] = useState<string | null>(null);
+
   // ── internal refs (never cause re-renders) ─────────────────────────────────
   const sessionIdRef      = useRef<string | null>(null);
   const currentRecordRef  = useRef<TotpRecord | null>(null);   // full record for tick accuracy
@@ -174,6 +184,7 @@ export const TeacherStartAttendanceScreen = () => {
     setTotpCode(totp.code);
     setTotpWindowSec(windowSec);
     setTotpTimeRemaining(remaining);
+    setAttendanceEnabled(totp.attendance_marking_enabled);
     currentRecordRef.current = totp;
 
     // ── tick every 500 ms using server-calibrated remaining ─────────────────
@@ -218,6 +229,11 @@ export const TeacherStartAttendanceScreen = () => {
       const session = await getInstructorActiveSession(instructor.id, userProfile.university_id);
       setActiveSession(session);
       sessionIdRef.current = session?.id ?? null;
+
+      // Always reset marking enabled from DB to stay in sync
+      if (!session?.id) {
+        setAttendanceEnabled(false);
+      }
 
       if (session?.id) {
         // Always use getTotpSessionForSession — it calibrates against server clock
@@ -392,15 +408,64 @@ export const TeacherStartAttendanceScreen = () => {
               </View>
             )}
 
-            {/* Start Attendance Button */}
-            <Pressable
-              style={[styles.primaryButton, { opacity: totpCode ? 1 : 0.4 }]}
-              disabled={!totpCode}
-              onPress={() => { /* TODO: navigate to attendance marking flow */ }}
-            >
-              <MaterialIcons name="check-circle" size={20} color="#FFFFFF" />
-              <Text style={styles.primaryButtonText}>Start Attendance</Text>
-            </Pressable>
+            {/* ── Start Attendance Button ────────────────────────── */}
+            {attendanceEnabled ? (
+              /* Already active — show a status badge */
+              <View style={[styles.primaryButton, { backgroundColor: '#16A34A' }]}>
+                <MaterialIcons name="check-circle" size={20} color="#FFFFFF" />
+                <Text style={styles.primaryButtonText}>Attendance Open ✓</Text>
+              </View>
+            ) : (
+              <Pressable
+                style={[styles.primaryButton, { opacity: totpCode && !isStartingAttendance ? 1 : 0.45 }]}
+                disabled={!totpCode || isStartingAttendance}
+                onPress={async () => {
+                  if (!activeSession?.id) return;
+                  setIsStartingAttendance(true);
+                  setStartAttendanceError(null);
+                  try {
+                    // 1. Capture teacher's live barometer (source of truth)
+                    let teacherPressure: number | null = null;
+                    try {
+                      const baroReading = await getBarometerReading();
+                      teacherPressure = baroReading?.pressure ?? null;
+                      console.log('[StartAttendance] Teacher barometer:', teacherPressure, 'hPa', '(source:', baroReading?.source, ')');
+                    } catch (baroErr) {
+                      console.warn('[StartAttendance] Barometer read failed — proceeding without pressure baseline:', baroErr);
+                    }
+                    // 2. Enable attendance in DB
+                    const result = await startAttendanceSession(activeSession.id, teacherPressure);
+                    if (result.success) {
+                      setAttendanceEnabled(true);
+                    } else {
+                      setStartAttendanceError(result.message);
+                    }
+                  } finally {
+                    setIsStartingAttendance(false);
+                  }
+                }}
+              >
+                {isStartingAttendance
+                  ? <>
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <Text style={styles.primaryButtonText}>Capturing sensor…</Text>
+                    </>
+                  : <>
+                      <MaterialIcons name="play-circle-filled" size={20} color="#FFFFFF" />
+                      <Text style={styles.primaryButtonText}>Start Attendance</Text>
+                    </>
+                }
+              </Pressable>
+            )}
+
+            {/* Error message */}
+            {startAttendanceError ? (
+              <View style={{ marginTop: 8, padding: 10, backgroundColor: '#FEE2E2', borderRadius: 8 }}>
+                <Text style={{ fontSize: 12, color: '#DC2626', textAlign: 'center' }}>
+                  {startAttendanceError}
+                </Text>
+              </View>
+            ) : null}
           </Animated.View>
         ) : (
           <Animated.View entering={FadeInUp.delay(100)} style={[styles.card, { alignItems: 'center', paddingVertical: 40 }]}>

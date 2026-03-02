@@ -428,26 +428,44 @@ export const MarkAttendanceScreen = () => {
               </View>
 
               {/* Mark Attendance / Test Button */}
-              <Pressable
-                style={[styles.markButton, testMode && { backgroundColor: colors.primary }]}
-                onPress={() => {
-                  if (testMode) {
-                    runTestVerification();
-                  } else if (ongoingSession) {
-                    setShowBottomSheet(true);
-                  }
-                }}
-                disabled={testRunning}
-              >
-                <MaterialIcons
-                  name={testRunning ? 'hourglass-empty' : testMode ? 'science' : 'check-circle'}
-                  size={18}
-                  color="#FFFFFF"
-                />
-                <Text style={styles.markButtonText}>
-                  {testRunning ? 'Running diagnostics…' : testMode ? 'Run Sensor Diagnostics' : 'Mark Attendance'}
-                </Text>
-              </Pressable>
+              {(() => {
+                const attendanceEnabled = (ongoingSession || classes[0])?.attendance_marking_enabled;
+                const isTestMode = testMode;
+                const isDisabled = testRunning || (!isTestMode && !attendanceEnabled);
+
+                if (!isTestMode && !attendanceEnabled) {
+                  // Teacher hasn't started the session yet
+                  return (
+                    <View style={[styles.markButton, { backgroundColor: '#F59E0B', marginTop: 16 }]}>
+                      <MaterialIcons name="hourglass-top" size={18} color="#FFFFFF" />
+                      <Text style={styles.markButtonText}>Waiting for Teacher…</Text>
+                    </View>
+                  );
+                }
+
+                return (
+                  <Pressable
+                    style={[styles.markButton, isTestMode && { backgroundColor: colors.primary }, { marginTop: 16, opacity: isDisabled ? 0.5 : 1 }]}
+                    onPress={() => {
+                      if (isTestMode) {
+                        runTestVerification();
+                      } else if (ongoingSession) {
+                        setShowBottomSheet(true);
+                      }
+                    }}
+                    disabled={isDisabled}
+                  >
+                    <MaterialIcons
+                      name={testRunning ? 'hourglass-empty' : isTestMode ? 'science' : 'check-circle'}
+                      size={18}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.markButtonText}>
+                      {testRunning ? 'Running diagnostics…' : isTestMode ? 'Run Sensor Diagnostics' : 'Mark Attendance'}
+                    </Text>
+                  </Pressable>
+                );
+              })()}
             </View>
           ) : (
             <View style={styles.emptyState}>

@@ -297,17 +297,30 @@ export const AttendanceBottomSheet: React.FC<AttendanceBottomSheetProps> = ({
       const barometerData = await getBarometerReading();
       const currentPressure = barometerData?.pressure || null;
 
-      // Step 3b: Fetch live baseline pressure from DB (buildings.surface_pressure_hpa — hourly Edge Fn)
-      const { getBuildingSurfacePressure } = await import('@/lib/pressure-service');
-      const buildingId = roomData.building?.id;
-      let baselinePressure: number | null = roomData.baseline_pressure_hpa;
-      if (buildingId) {
-        try {
-          const pressResult = await getBuildingSurfacePressure(buildingId);
-          baselinePressure = pressResult.pressure_hpa;
-          console.log(`[AttendanceBottomSheet] Live baseline: ${baselinePressure.toFixed(2)} hPa (${pressResult.source})`);
-        } catch (pressErr) {
-          console.warn('[AttendanceBottomSheet] Could not fetch live pressure, using static value:', pressErr);
+      // Step 3b: Resolve pressure baseline.
+      // Priority:
+      //   1. Teacher's live barometer captured at "Start Attendance" (most accurate)
+      //   2. buildings.surface_pressure_hpa updated hourly by Open-Meteo Edge Fn
+      //   3. Static room baseline / ISA fallback
+      let baselinePressure: number | null = null;
+
+      if (session.teacher_baseline_pressure_hpa) {
+        // Best: teacher device reading — same device-class offset, captured right here, right now
+        baselinePressure = session.teacher_baseline_pressure_hpa;
+        console.log(`[AttendanceBottomSheet] Using teacher baseline: ${baselinePressure.toFixed(2)} hPa`);
+      } else {
+        // Fallback: building's Open-Meteo surface pressure (hourly)
+        baselinePressure = roomData.baseline_pressure_hpa ?? null;
+        const buildingId = roomData.building?.id;
+        if (buildingId) {
+          try {
+            const { getBuildingSurfacePressure } = await import('@/lib/pressure-service');
+            const pressResult = await getBuildingSurfacePressure(buildingId);
+            baselinePressure = pressResult.pressure_hpa;
+            console.log(`[AttendanceBottomSheet] Fallback baseline: ${baselinePressure.toFixed(2)} hPa (${pressResult.source})`);
+          } catch (pressErr) {
+            console.warn('[AttendanceBottomSheet] Could not fetch live pressure, using static value:', pressErr);
+          }
         }
       }
 
@@ -388,170 +401,190 @@ export const AttendanceBottomSheet: React.FC<AttendanceBottomSheetProps> = ({
               </View>
             </View>
 
-            {/* Steps */}
+            {/* Steps — guarded: only shown after teacher starts the session */}
             <ScrollView
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={false}
               scrollIndicatorInsets={{ right: 1 }}
               keyboardDismissMode="on-drag"
             >
-              <View style={styles.stepsContainer}>
-                {/* Step 1: Geolocation */}
-                <Animated.View
-                  entering={FadeInUp.delay(100)}
-                  style={[
-                    styles.stepWrapper,
-                    currentStep > 1 && styles.stepInactive,
-                  ]}
-                >
-                  <View style={styles.stepHeader}>
-                    <View
-                      style={[
-                        styles.stepIndicator,
-                        stepStates.geolocation.completed
-                          ? styles.stepIndicatorActive
-                          : currentStep === 1
-                            ? styles.stepIndicator
-                            : styles.stepIndicatorInactive,
-                      ]}
-                    >
-                      {stepStates.geolocation.completed ? (
-                        <MaterialIcons name="check" size={20} color="#FFFFFF" />
-                      ) : (
-                        <Text style={styles.stepIndicatorText}>1</Text>
-                      )}
-                    </View>
-                    <View style={styles.stepTitleContainer}>
-                      <Text style={styles.stepTitle}>Location Verification</Text>
-                      <Text style={styles.stepSubtitle}>
-                        {stepStates.geolocation.completed
-                          ? 'Location verified'
-                          : 'Check your classroom location'}
-                      </Text>
-                    </View>
+              {!session.attendance_marking_enabled ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40, gap: 16 }}>
+                  <View style={{
+                    width: 72, height: 72, borderRadius: 36,
+                    backgroundColor: '#F59E0B20',
+                    justifyContent: 'center', alignItems: 'center',
+                  }}>
+                    <MaterialIcons name="hourglass-top" size={36} color="#F59E0B" />
                   </View>
-
-                  {currentStep === 1 ? (
-                    <View style={styles.stepContent}>
-                      <AttendanceStepGeolocation
-                        lectureSessionId={session.id}
-                        universityId={universityId ?? ''}
-                        onComplete={handleGeolocationComplete}
-                      />
-                    </View>
-                  ) : (
-                    stepStates.geolocation.completed && (
-                      <View style={styles.completedBadge}>
-                        <MaterialIcons name="check-circle" size={16} color={colors.success} />
-                        <Text style={styles.completedText}>Verified</Text>
+                  <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' }}>
+                    Waiting for Teacher
+                  </Text>
+                  <Text style={{ fontSize: 14, color: colors.textSecondary, textAlign: 'center', maxWidth: 280 }}>
+                    {"Your instructor hasn't started the attendance session yet.\nOnce they press Start Attendance, you can begin marking."}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.stepsContainer}>
+                  {/* Step 1: Geolocation */}
+                  <Animated.View
+                    entering={FadeInUp.delay(100)}
+                    style={[
+                      styles.stepWrapper,
+                      currentStep > 1 && styles.stepInactive,
+                    ]}
+                  >
+                    <View style={styles.stepHeader}>
+                      <View
+                        style={[
+                          styles.stepIndicator,
+                          stepStates.geolocation.completed
+                            ? styles.stepIndicatorActive
+                            : currentStep === 1
+                              ? styles.stepIndicator
+                              : styles.stepIndicatorInactive,
+                        ]}
+                      >
+                        {stepStates.geolocation.completed ? (
+                          <MaterialIcons name="check" size={20} color="#FFFFFF" />
+                        ) : (
+                          <Text style={styles.stepIndicatorText}>1</Text>
+                        )}
                       </View>
-                    )
-                  )}
-                </Animated.View>
-
-                {/* Step 2: Barometer */}
-                <Animated.View
-                  entering={FadeInUp.delay(200)}
-                  style={[
-                    styles.stepWrapper,
-                    currentStep !== 2 && currentStep <= 1 && styles.stepInactive,
-                  ]}
-                >
-                  <View style={styles.stepHeader}>
-                    <View
-                      style={[
-                        styles.stepIndicator,
-                        stepStates.barometer.completed
-                          ? styles.stepIndicatorActive
-                          : currentStep === 2
-                            ? styles.stepIndicator
-                            : styles.stepIndicatorInactive,
-                      ]}
-                    >
-                      {stepStates.barometer.completed ? (
-                        <MaterialIcons name="check" size={20} color="#FFFFFF" />
-                      ) : (
-                        <Text style={styles.stepIndicatorText}>2</Text>
-                      )}
-                    </View>
-                    <View style={styles.stepTitleContainer}>
-                      <Text style={styles.stepTitle}>Altitude Verification</Text>
-                      <Text style={styles.stepSubtitle}>
-                        {stepStates.barometer.completed
-                          ? 'Altitude verified'
-                          : 'Verify using device barometer'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {currentStep === 2 ? (
-                    <View style={styles.stepContent}>
-                      <AttendanceStepBarometer
-                        expectedAltitude={0} // Will be fetched from room data
-                        onComplete={handleBarometerComplete}
-                      />
-                    </View>
-                  ) : (
-                    stepStates.barometer.completed && (
-                      <View style={styles.completedBadge}>
-                        <MaterialIcons name="check-circle" size={16} color={colors.success} />
-                        <Text style={styles.completedText}>Verified</Text>
+                      <View style={styles.stepTitleContainer}>
+                        <Text style={styles.stepTitle}>Location Verification</Text>
+                        <Text style={styles.stepSubtitle}>
+                          {stepStates.geolocation.completed
+                            ? 'Location verified'
+                            : 'Check your classroom location'}
+                        </Text>
                       </View>
-                    )
-                  )}
-                </Animated.View>
+                    </View>
 
-                {/* Step 3: TOTP */}
-                <Animated.View
-                  entering={FadeInUp.delay(300)}
-                  style={[
-                    styles.stepWrapper,
-                    currentStep !== 3 && currentStep <= 2 && styles.stepInactive,
-                  ]}
-                >
-                  <View style={styles.stepHeader}>
-                    <View
-                      style={[
-                        styles.stepIndicator,
-                        stepStates.totp.completed
-                          ? styles.stepIndicatorActive
-                          : currentStep === 3
-                            ? styles.stepIndicator
-                            : styles.stepIndicatorInactive,
-                      ]}
-                    >
-                      {stepStates.totp.completed ? (
-                        <MaterialIcons name="check" size={20} color="#FFFFFF" />
-                      ) : (
-                        <Text style={styles.stepIndicatorText}>3</Text>
-                      )}
-                    </View>
-                    <View style={styles.stepTitleContainer}>
-                      <Text style={styles.stepTitle}>TOTP Code Verification</Text>
-                      <Text style={styles.stepSubtitle}>
-                        {stepStates.totp.completed
-                          ? 'Code verified'
-                          : 'Enter the code from your instructor'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {currentStep === 3 ? (
-                    <View style={styles.stepContent}>
-                      <AttendanceStepTOTP
-                        onComplete={handleTOTPComplete}
-                      />
-                    </View>
-                  ) : (
-                    stepStates.totp.completed && (
-                      <View style={styles.completedBadge}>
-                        <MaterialIcons name="check-circle" size={16} color={colors.success} />
-                        <Text style={styles.completedText}>Code: {stepStates.totp.code}</Text>
+                    {currentStep === 1 ? (
+                      <View style={styles.stepContent}>
+                        <AttendanceStepGeolocation
+                          lectureSessionId={session.id}
+                          universityId={universityId ?? ''}
+                          onComplete={handleGeolocationComplete}
+                        />
                       </View>
-                    )
-                  )}
-                </Animated.View>
-              </View>
+                    ) : (
+                      stepStates.geolocation.completed && (
+                        <View style={styles.completedBadge}>
+                          <MaterialIcons name="check-circle" size={16} color={colors.success} />
+                          <Text style={styles.completedText}>Verified</Text>
+                        </View>
+                      )
+                    )}
+                  </Animated.View>
+
+                  {/* Step 2: Barometer */}
+                  <Animated.View
+                    entering={FadeInUp.delay(200)}
+                    style={[
+                      styles.stepWrapper,
+                      currentStep !== 2 && currentStep <= 1 && styles.stepInactive,
+                    ]}
+                  >
+                    <View style={styles.stepHeader}>
+                      <View
+                        style={[
+                          styles.stepIndicator,
+                          stepStates.barometer.completed
+                            ? styles.stepIndicatorActive
+                            : currentStep === 2
+                              ? styles.stepIndicator
+                              : styles.stepIndicatorInactive,
+                        ]}
+                      >
+                        {stepStates.barometer.completed ? (
+                          <MaterialIcons name="check" size={20} color="#FFFFFF" />
+                        ) : (
+                          <Text style={styles.stepIndicatorText}>2</Text>
+                        )}
+                      </View>
+                      <View style={styles.stepTitleContainer}>
+                        <Text style={styles.stepTitle}>Altitude Verification</Text>
+                        <Text style={styles.stepSubtitle}>
+                          {stepStates.barometer.completed
+                            ? 'Altitude verified'
+                            : 'Verify using device barometer'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {currentStep === 2 ? (
+                      <View style={styles.stepContent}>
+                        <AttendanceStepBarometer
+                          expectedAltitude={0}
+                          onComplete={handleBarometerComplete}
+                        />
+                      </View>
+                    ) : (
+                      stepStates.barometer.completed && (
+                        <View style={styles.completedBadge}>
+                          <MaterialIcons name="check-circle" size={16} color={colors.success} />
+                          <Text style={styles.completedText}>Verified</Text>
+                        </View>
+                      )
+                    )}
+                  </Animated.View>
+
+                  {/* Step 3: TOTP */}
+                  <Animated.View
+                    entering={FadeInUp.delay(300)}
+                    style={[
+                      styles.stepWrapper,
+                      currentStep !== 3 && currentStep <= 2 && styles.stepInactive,
+                    ]}
+                  >
+                    <View style={styles.stepHeader}>
+                      <View
+                        style={[
+                          styles.stepIndicator,
+                          stepStates.totp.completed
+                            ? styles.stepIndicatorActive
+                            : currentStep === 3
+                              ? styles.stepIndicator
+                              : styles.stepIndicatorInactive,
+                        ]}
+                      >
+                        {stepStates.totp.completed ? (
+                          <MaterialIcons name="check" size={20} color="#FFFFFF" />
+                        ) : (
+                          <Text style={styles.stepIndicatorText}>3</Text>
+                        )}
+                      </View>
+                      <View style={styles.stepTitleContainer}>
+                        <Text style={styles.stepTitle}>TOTP Code Verification</Text>
+                        <Text style={styles.stepSubtitle}>
+                          {stepStates.totp.completed
+                            ? 'Code verified'
+                            : 'Enter the code from your instructor'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {currentStep === 3 ? (
+                      <View style={styles.stepContent}>
+                        <AttendanceStepTOTP
+                          onComplete={handleTOTPComplete}
+                        />
+                      </View>
+                    ) : (
+                      stepStates.totp.completed && (
+                        <View style={styles.completedBadge}>
+                          <MaterialIcons name="check-circle" size={16} color={colors.success} />
+                          <Text style={styles.completedText}>
+                            {`Code: ${stepStates.totp.code}`}
+                          </Text>
+                        </View>
+                      )
+                    )}
+                  </Animated.View>
+                </View>
+              )}
             </ScrollView>
 
             {/* Action Buttons */}

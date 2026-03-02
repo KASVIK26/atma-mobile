@@ -29,6 +29,7 @@ export interface DashboardSession extends Partial<LectureSessionExtended> {
   totp_expires_at?: string;
   totp_code_shared?: boolean; // Instructor has enabled code sharing for this session
   attendance_marking_enabled?: boolean; // Students can mark attendance
+  teacher_baseline_pressure_hpa?: number | null; // Teacher's live barometer at session start
 }
 
 export interface DashboardStats {
@@ -153,7 +154,7 @@ export async function getTodaysDashboardData(
     // Step 3: Get TOTP sessions for today's lectures
     const { data: totpSessions, error: totpError } = await supabase
       .from('totp_sessions')
-      .select('id, lecture_session_id, code, expires_at, code_shared, attendance_marking_enabled')
+      .select('id, lecture_session_id, code, expires_at, code_shared, attendance_marking_enabled, teacher_baseline_pressure_hpa')
       .in('lecture_session_id', sessionIds)
       .eq('university_id', universityId);
 
@@ -169,6 +170,7 @@ export async function getTodaysDashboardData(
         expires_at: totp.expires_at,
         code_shared: totp.code_shared || false,
         attendance_marking_enabled: totp.attendance_marking_enabled || false,
+        teacher_baseline_pressure_hpa: totp.teacher_baseline_pressure_hpa ?? null,
       });
     });
 
@@ -217,6 +219,7 @@ export async function getTodaysDashboardData(
         totp_expires_at: totp?.expires_at,
         totp_code_shared: totp?.code_shared || false,
         attendance_marking_enabled: totp?.attendance_marking_enabled || false,
+        teacher_baseline_pressure_hpa: totp?.teacher_baseline_pressure_hpa ?? null,
         session_status: session.session_status,
       };
     });

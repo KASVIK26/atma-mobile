@@ -1,7 +1,8 @@
 import supabase from '@/lib/supabase';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { useRouter, useSegments } from 'expo-router';
-import React, { ReactNode, createContext, useContext, useEffect, useState } from 'react';
+import React, { ReactNode, createContext, useContext, useEffect, useRef, useState } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -145,7 +146,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   // User profile state
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userProfile, setUserProfileState] = useState<UserProfile | null>(null);
+  // Keep a ref in sync so callbacks (AppState, onAuthStateChange) always see the latest
+  // value without needing to re-subscribe / close over stale state.
+  const userProfileRef = useRef<UserProfile | null>(null);
+  const setUserProfile = (profile: UserProfile | null) => {
+    userProfileRef.current = profile;
+    setUserProfileState(profile);
+  };
   const [enrollments, setEnrollments] = useState<StudentEnrollment[] | null>(null);
   const [instructor, setInstructor] = useState<InstructorData | null>(null);
 
@@ -217,8 +225,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     } catch (error) {
       console.error('[fetchUserProfile] ❌ Exception during profile fetch:', error);
-      // Don't fail on profile fetch errors - allow signup to continue
-      setUserProfile(null);
+      // Don't wipe an already-loaded profile on transient fetch errors (e.g. network
+      // blip when app resumes after hours in background).  Only null-out when there
+      // was genuinely no profile to begin with (e.g. first load or sign-in failure).
+      if (!userProfileRef.current) {
+        setUserProfile(null);
+      } else {
+        console.warn('[fetchUserProfile] Keeping existing profile despite fetch error');
+      }
     }
   };
 
@@ -317,19 +331,85 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (newSession?.user) {
         console.log('[Auth State Change] Fetching profile for user:', newSession.user.id.substring(0, 8) + '***');
         await fetchUserProfile(newSession.user.id);
-      } else {
-        // User signed out
-        console.log('[Auth State Change] User signed out, clearing state');
+      } else if (event === 'SIGNED_OUT') {
+        // Only clear profile/enrollment data on an explicit sign-out.
+        // Other no-session events (e.g. temporary token refresh failures while the
+        // app is in the background) should NOT wipe local state — the user is
+        // still effectively "logged in" and the session will self-heal on next
+        // foreground activation via the AppState listener below.
+        console.log('[Auth State Change] SIGNED_OUT — clearing local state');
         setUserProfile(null);
         setEnrollments(null);
         setInstructor(null);
       }
+      // For other null-session events (e.g. network blip during TOKEN_REFRESHED),
+      // keep existing state intact — the AppState listener will re-hydrate.
     });
 
     return () => {
       mounted = false;
       subscription?.unsubscribe();
     };
+  }, []);
+
+  // ============================================================================
+  // APP STATE — re-hydrate session & profile when app comes to foreground
+  // ============================================================================
+  // When Android/iOS resumes the app after hours in background the Supabase SDK
+  // may have already tried (and failed) to refresh the token while we were
+  // suspended.  Re-checking here guarantees:
+  //   • Active session  → profile is re-fetched if it went missing
+  //   • Expired session → state is properly cleared so routing redirects to login
+  useEffect(() => {
+    let lastState = AppState.currentState;
+
+    const handleAppStateChange = async (nextState: AppStateStatus) => {
+      const comingToForeground = lastState !== 'active' && nextState === 'active';
+      lastState = nextState;
+
+      if (!comingToForeground) return;
+
+      console.log('[AuthContext] App returned to foreground — refreshing session');
+      try {
+        const {
+          data: { session: currentSession },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error) {
+          console.warn('[AuthContext] getSession error on resume:', error.message);
+          return;
+        }
+
+        if (currentSession?.user) {
+          setSession(currentSession);
+          setUser(currentSession.user);
+          // Re-fetch profile only if it's gone (avoids unnecessary network calls)
+          if (!userProfileRef.current) {
+            console.log('[AuthContext] Profile missing after resume — re-fetching');
+            await fetchUserProfile(currentSession.user.id);
+          }
+        } else {
+          // Session genuinely expired / logged out while backgrounded
+          if (userProfileRef.current) {
+            console.log('[AuthContext] Session expired in background — clearing state');
+            setSession(null);
+            setUser(null);
+            setUserProfile(null);
+            setEnrollments(null);
+            setInstructor(null);
+          }
+        }
+      } catch (err) {
+        console.warn('[AuthContext] Error during foreground session refresh:', err);
+      }
+    };
+
+    const sub = AppState.addEventListener('change', handleAppStateChange);
+    return () => sub.remove();
+  // fetchUserProfile is defined in the same render scope; it's stable enough
+  // for this purpose (its internals use setters that are always fresh).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ============================================================================
@@ -498,7 +578,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (error) throw error;
 
       // Update local state
-      setUserProfile((prev) => (prev ? { ...prev, ...updates } : null));
+      setUserProfile(userProfileRef.current ? { ...userProfileRef.current, ...updates } : null);
 
       return { error: null };
     } catch (error) {
