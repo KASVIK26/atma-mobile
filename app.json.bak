@@ -21,9 +21,10 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#ffffff",
-        "foregroundImage": "./Icons_Android/mipmap-hdpi/ic_launcher_foreground.png",
-        "backgroundImage": "./Icons_Android/mipmap-hdpi/ic_launcher_background.png"
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -75,7 +76,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "9ebbc8d2-abf4-4efb-b2d1-a7a940b8fdb5"
+        "projectId": "35c21197-241e-4d6c-9f03-edf231dfc8aa"
       }
     },
     "runtimeVersion": {
@@ -83,7 +84,6 @@
     },
     "updates": {
       "url": "https://u.expo.dev/35c21197-241e-4d6c-9f03-edf231dfc8aa"
-    },
-    "owner": "kasvik2603"
+    }
   }
 }
