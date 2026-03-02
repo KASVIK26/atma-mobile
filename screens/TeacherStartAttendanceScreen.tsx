@@ -299,9 +299,9 @@ export const TeacherStartAttendanceScreen = () => {
         style={[styles.header, { paddingTop: insets.top }]}
       >
         <View style={styles.headerBrand}>
-          <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.primaryLight, justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: 40, height: 40, borderRadius: 10, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' }}>
             <Image
-              source={require('@/assets/images/ATMA-LOGO.png')}
+              source={require('@/assets/images/ATMA-inApp.png')}
               style={{ width: 40, height: 40, borderRadius: 10 }}
               resizeMode="contain"
             />

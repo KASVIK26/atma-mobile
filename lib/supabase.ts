@@ -19,7 +19,11 @@ const ExpoSecureSessionStorage = {
   getItem: async (key: string) => {
     try {
       if (Platform.OS === 'web') {
-        return localStorage.getItem(key);
+        // Only access localStorage if it exists (not during SSR/build)
+        if (typeof localStorage !== 'undefined') {
+          return localStorage.getItem(key);
+        }
+        return null;
       }
       return await SecureStore.getItemAsync(key);
     } catch (error) {
@@ -30,7 +34,10 @@ const ExpoSecureSessionStorage = {
   setItem: async (key: string, value: string) => {
     try {
       if (Platform.OS === 'web') {
-        localStorage.setItem(key, value);
+        // Only access localStorage if it exists (not during SSR/build)
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(key, value);
+        }
       } else {
         await SecureStore.setItemAsync(key, value);
       }
@@ -41,7 +48,10 @@ const ExpoSecureSessionStorage = {
   removeItem: async (key: string) => {
     try {
       if (Platform.OS === 'web') {
-        localStorage.removeItem(key);
+        // Only access localStorage if it exists (not during SSR/build)
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem(key);
+        }
       } else {
         await SecureStore.deleteItemAsync(key);
       }

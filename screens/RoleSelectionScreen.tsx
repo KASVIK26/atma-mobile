@@ -198,9 +198,9 @@ export const RoleSelectionScreen = () => {
             <View style={styles.logoSection}>
               <View style={styles.logoBg}>
                 <Image
-                  source={require('@/assets/images/ATMA-LOGO.png')}
+                  source={require('@/assets/images/ATMA-inApp.png')}
                   style={{ width: 44, height: 44, borderRadius: 10 }}
-                  resizeMode="cover"
+                  resizeMode="contain"
                 />
               </View>
               <Text style={styles.headerBrand}>ATMA</Text>

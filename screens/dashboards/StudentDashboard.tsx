@@ -265,13 +265,11 @@ export const StudentDashboard = () => {
       >
         <View style={styles.headerTop}>
           <View style={styles.logoContainer}>
-            <View style={styles.logoBg}>
-              <Image
-                source={require('@/assets/images/ATMA-LOGO.png')}
-                style={styles.logoImage}
-                resizeMode="cover"
-              />
-            </View>
+            <Image
+              source={require('@/assets/images/ATMA-inApp.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
             <Text style={styles.headerBrand}>ATMA</Text>
           </View>
           <View style={styles.headerActions}>

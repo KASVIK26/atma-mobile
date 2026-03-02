@@ -1,12 +1,14 @@
 {
   "expo": {
-    "name": "atma-mobile",
+    "name": "ATMA",
     "slug": "atma-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/ATMA-inApp.png",
     "scheme": "atmamobile",
     "userInterfaceStyle": "automatic",
+    "description": "ATMA — Automated Technology for Master Attendance. Smart attendance tracking for universities.",
+    "primaryColor": "#2563EB",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
@@ -27,6 +29,14 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.BODY_SENSORS",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.BODY_SENSORS",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_BACKGROUND_LOCATION",
@@ -68,6 +78,12 @@
       "eas": {
         "projectId": "35c21197-241e-4d6c-9f03-edf231dfc8aa"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/35c21197-241e-4d6c-9f03-edf231dfc8aa"
     }
   }
 }

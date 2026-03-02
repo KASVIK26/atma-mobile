@@ -157,6 +157,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [enrollments, setEnrollments] = useState<StudentEnrollment[] | null>(null);
   const [instructor, setInstructor] = useState<InstructorData | null>(null);
 
+  // Guard against concurrent fetchUserProfile calls (e.g. INITIAL_SESSION + TOKEN_REFRESHED
+  // firing in quick succession on cold start).
+  const isFetchingProfileRef = useRef(false);
+
   // ============================================================================
   // SETUP & SESSION RECOVERY
   // ============================================================================
@@ -165,6 +169,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    * Fetch user profile from users table
    */
   const fetchUserProfile = async (userId: string) => {
+    // Prevent concurrent fetches — skip if one is already in flight.
+    if (isFetchingProfileRef.current) {
+      console.log('[fetchUserProfile] Skipping — fetch already in progress');
+      return;
+    }
+    isFetchingProfileRef.current = true;
     try {
       console.log('[fetchUserProfile] Starting profile fetch for user:', userId.substring(0, 8) + '***');
       
@@ -233,6 +243,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } else {
         console.warn('[fetchUserProfile] Keeping existing profile despite fetch error');
       }
+    } finally {
+      isFetchingProfileRef.current = false;
     }
   };
 
@@ -283,41 +295,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   /**
-   * Initialize auth on app start
-   * Recovers session from secure storage and verifies it's still valid
+   * Initialize auth — single-path via onAuthStateChange.
+   *
+   * Supabase JS v2 fires `INITIAL_SESSION` synchronously the moment you
+   * subscribe.  We use that event as the canonical cold-start path so there
+   * is only ONE place that reads the stored session and only ONE call to
+   * fetchUserProfile on launch (eliminating the old race condition between the
+   * manual getSession() call and the onAuthStateChange subscription).
+   *
+   * Hard timeout: if INITIAL_SESSION never fires (e.g. SecureStore I/O hangs
+   * on some Android devices), we force isLoading = false after 10 s so the
+   * app never stays on a blank white screen forever.
    */
   useEffect(() => {
     let mounted = true;
 
-    const initializeAuth = async () => {
-      try {
-        setIsLoading(true);
-
-        // Get current session
-        const {
-          data: { session: currentSession },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-
-        if (sessionError) throw sessionError;
-
-        if (currentSession) {
-          if (mounted) {
-            setSession(currentSession);
-            setUser(currentSession.user);
-            await fetchUserProfile(currentSession.user.id);
-          }
-        }
-      } catch (error) {
-        console.error('Error initializing auth:', error);
-      } finally {
-        if (mounted) setIsLoading(false);
+    // ── Hard-timeout safety net ──────────────────────────────────────────────
+    // Forces isLoading → false after 10 s regardless of what the SDK does.
+    const initTimeout = setTimeout(() => {
+      if (mounted) {
+        console.warn('[AuthContext] Init timeout — forcing isLoading = false');
+        setIsLoading(false);
       }
-    };
+    }, 10_000);
 
-    initializeAuth();
-
-    // Listen for auth state changes
+    // ── Single-path auth subscription ───────────────────────────────────────
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, newSession) => {
@@ -325,29 +327,46 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       console.log('[Auth State Change] Event:', event, 'Has session:', !!newSession?.user);
 
-      setSession(newSession);
-      setUser(newSession?.user ?? null);
+      if (event === 'INITIAL_SESSION') {
+        // ── Cold-start / app relaunch ────────────────────────────────────────
+        // This fires immediately on subscribe with whatever session is currently
+        // in SecureStore.  It is the ONLY place we load the initial profile on
+        // cold start — no separate getSession() call needed.
+        if (newSession?.user) {
+          setSession(newSession);
+          setUser(newSession.user);
+          await fetchUserProfile(newSession.user.id);
+        }
+        // Always mark loading done after the initial check.
+        if (mounted) {
+          clearTimeout(initTimeout);
+          setIsLoading(false);
+        }
+        return;
+      }
 
+      // ── Subsequent events ────────────────────────────────────────────────
       if (newSession?.user) {
-        console.log('[Auth State Change] Fetching profile for user:', newSession.user.id.substring(0, 8) + '***');
+        // Valid session change (SIGNED_IN, TOKEN_REFRESHED with user, etc.)
+        setSession(newSession);
+        setUser(newSession.user);
         await fetchUserProfile(newSession.user.id);
-      } else if (event === 'SIGNED_OUT') {
-        // Only clear profile/enrollment data on an explicit sign-out.
-        // Other no-session events (e.g. temporary token refresh failures while the
-        // app is in the background) should NOT wipe local state — the user is
-        // still effectively "logged in" and the session will self-heal on next
-        // foreground activation via the AppState listener below.
-        console.log('[Auth State Change] SIGNED_OUT — clearing local state');
+      } else if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+        // Explicit logout or account deletion — clear everything.
+        console.log('[Auth State Change]', event, '— clearing all local state');
+        setSession(null);
+        setUser(null);
         setUserProfile(null);
         setEnrollments(null);
         setInstructor(null);
       }
-      // For other null-session events (e.g. network blip during TOKEN_REFRESHED),
-      // keep existing state intact — the AppState listener will re-hydrate.
+      // For any other null-session event (TOKEN_REFRESHED failure, network blip)
+      // keep existing state intact — AppState listener will re-validate on resume.
     });
 
     return () => {
       mounted = false;
+      clearTimeout(initTimeout);
       subscription?.unsubscribe();
     };
   }, []);
@@ -799,9 +818,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // If userRole is null, don't redirect - user is still completing signup
       }
       
-      // If already in main app and authenticated, make sure user is properly initialized
+      // If already in main app but profile didn't load, redirect back to login so
+      // the user can re-authenticate rather than seeing blank/default placeholders.
       if (!inAuthGroup && !userRole && !isSignupInProgress) {
-        console.log('[Navigation] User authenticated but no role - may still be signing up');
+        console.log('[Navigation] Authenticated but profile unavailable — redirecting to welcome');
+        router.replace('/(auth)/welcome');
       }
     }
   }, [isAuthenticated, isLoading, segments, userRole]);

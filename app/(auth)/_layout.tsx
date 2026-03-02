@@ -2,7 +2,7 @@ import { Stack } from 'expo-router';
 import 'react-native-reanimated';
 
 export const unstable_settings = {
-  anchor: 'auth',
+  anchor: 'welcome',
 };
 
 export default function AuthLayout() {

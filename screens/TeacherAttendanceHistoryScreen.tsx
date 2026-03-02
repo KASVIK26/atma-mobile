@@ -7,17 +7,17 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Dimensions,
-  Image,
-  Modal,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Dimensions,
+    Image,
+    Modal,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -500,9 +500,9 @@ export const TeacherAttendanceHistoryScreen = () => {
         style={[styles.header, { paddingTop: insets.top }]}
       >
         <View style={styles.headerBrand}>
-          <View style={[styles.brandIcon, { backgroundColor: colors.primaryLight, borderRadius: 10, width: 40, height: 40 }]}>
+          <View style={[styles.brandIcon, { borderRadius: 10, width: 40, height: 40, overflow: 'hidden' }]}>
             <Image
-              source={require('@/assets/images/ATMA-LOGO.png')}
+              source={require('@/assets/images/ATMA-inApp.png')}
               style={{ width: 40, height: 40, borderRadius: 10 }}
               resizeMode="contain"
             />

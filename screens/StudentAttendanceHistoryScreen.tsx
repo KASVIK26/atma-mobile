@@ -372,9 +372,9 @@ export const StudentAttendanceHistoryScreen = () => {
         style={[styles.header, { paddingTop: insets.top }]}
       >
         <View style={styles.headerBrand}>
-          <View style={[styles.brandIcon, { backgroundColor: colors.primaryLight, borderRadius: 10, width: 40, height: 40 }]}>
+          <View style={[styles.brandIcon, { borderRadius: 10, width: 40, height: 40, overflow: 'hidden' }]}>
             <Image
-              source={require('@/assets/images/ATMA-LOGO.png')}
+              source={require('@/assets/images/ATMA-inApp.png')}
               style={{ width: 40, height: 40, borderRadius: 10 }}
               resizeMode="contain"
             />

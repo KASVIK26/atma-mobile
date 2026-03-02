@@ -219,7 +219,7 @@ export const ProfileScreen = () => {
           <View style={styles.headerLeft}>
             <View style={styles.headerIcon}>
               <Image
-                source={require('@/assets/images/ATMA-LOGO.png')}
+                source={require('@/assets/images/ATMA-inApp.png')}
                 style={{ width: 40, height: 40, borderRadius: 10 }}
                 resizeMode="contain"
               />

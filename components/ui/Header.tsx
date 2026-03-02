@@ -10,12 +10,12 @@ import { HeaderProps } from '@/types/ui';
 import { MaterialIcons } from '@expo/vector-icons';
 import React from 'react';
 import {
-  Image,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Image,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 
 const styles = StyleSheet.create({
@@ -88,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({
           {!showBackButton && (
             <View style={styles.logoContainer}>
               <Image
-                source={require('@/assets/images/ATMA-LOGO.png')}
+                source={require('@/assets/images/ATMA-inApp.png')}
                 style={{ width: 32, height: 32, resizeMode: 'contain' }}
               />
             </View>

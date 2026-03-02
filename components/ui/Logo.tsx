@@ -51,7 +51,7 @@ export const Logo: React.FC<LogoProps> = ({ size = 'md', style }) => {
     return (
       <View style={[styles.smallLogoContainer, style]}>
         <Image
-          source={require('@/assets/images/ATMA-LOGO.png')}
+          source={require('@/assets/images/ATMA-inApp.png')}
           style={styles.smallLogo}
         />
       </View>
@@ -61,7 +61,7 @@ export const Logo: React.FC<LogoProps> = ({ size = 'md', style }) => {
   return (
     <View style={[styles.logoContainer, style]}>
       <Image
-        source={require('@/assets/images/ATMA-LOGO.png')}
+        source={require('@/assets/images/ATMA-inApp.png')}
         style={styles.logo}
       />
     </View>

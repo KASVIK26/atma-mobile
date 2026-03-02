@@ -154,9 +154,9 @@ export const ClassesScreen = () => {
       >
         <View style={styles.headerContent}>
           <View style={styles.headerLeft}>
-            <View style={[styles.headerIcon, { backgroundColor: colors.primaryLight, borderRadius: 10, width: 40, height: 40 }]}>
+            <View style={[styles.headerIcon, { borderRadius: 10, width: 40, height: 40, overflow: 'hidden' }]}>
               <Image
-                source={require('@/assets/images/ATMA-LOGO.png')}
+                source={require('@/assets/images/ATMA-inApp.png')}
                 style={{ width: 40, height: 40, borderRadius: 10 }}
                 resizeMode="contain"
               />
