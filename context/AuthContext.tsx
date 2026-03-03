@@ -178,6 +178,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Concurrency guard — prevents two simultaneous fetchUserProfile calls.
   const isFetchingProfileRef = useRef(false);
 
+  // Recovery guard — when the cold-start profile fetch is aborted (slow network),
+  // the routing guard retries once before redirecting to welcome.  Reset on sign-out.
+  const hasTriedProfileRecovery = useRef(false);
+
   // ============================================================================
   // SETUP & SESSION RECOVERY
   // ============================================================================
@@ -208,13 +212,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     isFetchingProfileRef.current = true;
     setIsProfileLoading(true);
+
+    // ── Per-fetch abort timeout ──────────────────────────────────────────────
+    // On Android cold start the radio/network stack can take several seconds to
+    // become available.  Without a timeout the supabase fetch() hangs forever,
+    // keeping isProfileLoading=true which permanently blocks the routing guard.
+    const fetchAbortController = new AbortController();
+    const fetchAbortTimeout = setTimeout(() => {
+      console.warn('[fetchUserProfile] Query taking too long — aborting after 7 s');
+      fetchAbortController.abort();
+    }, 7_000);
+
     try {
       console.log('[fetchUserProfile] Starting profile fetch for user:', userId.substring(0, 8) + '***');
       
       const { data, error } = await supabase
         .from('users')
         .select('*')
-        .eq('id', userId);
+        .eq('id', userId)
+        .abortSignal(fetchAbortController.signal);
+
+      clearTimeout(fetchAbortTimeout);
 
       if (error) {
         console.error('[fetchUserProfile] ❌ Query error:', error);
@@ -267,7 +285,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUserProfile(null);
       }
     } catch (error) {
-      console.error('[fetchUserProfile] ❌ Exception during profile fetch:', error);
+      clearTimeout(fetchAbortTimeout);
+      const isAbortError = error instanceof Error && error.name === 'AbortError';
+      if (isAbortError) {
+        console.warn('[fetchUserProfile] ⚠️ Fetch aborted (timeout) — profile unavailable for this boot cycle');
+      } else {
+        console.error('[fetchUserProfile] ❌ Exception during profile fetch:', error);
+      }
       // Don't wipe an already-loaded profile on transient fetch errors (e.g. network
       // blip when app resumes after hours in background).  Only null-out when there
       // was genuinely no profile to begin with (e.g. first load or sign-in failure).
@@ -277,6 +301,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         console.warn('[fetchUserProfile] Keeping existing profile despite fetch error');
       }
     } finally {
+      clearTimeout(fetchAbortTimeout);
       isFetchingProfileRef.current = false;
       setIsProfileLoading(false);
     }
@@ -346,10 +371,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // ── Hard-timeout safety net ──────────────────────────────────────────────
     // Forces isLoading → false after 10 s regardless of what the SDK does.
+    // Also releases the isProfileLoading lock so the routing guard is never
+    // permanently blocked by a hung network call (e.g. slow Android radio on
+    // cold start after a process kill / cache clear).
     const initTimeout = setTimeout(() => {
       if (mounted) {
         console.warn('[AuthContext] Init timeout — forcing isLoading = false');
         setIsLoading(false);
+        // If a profile fetch is still in-flight, release its lock too so the
+        // routing guard (which guards on isProfileLoading) can proceed.
+        if (isFetchingProfileRef.current) {
+          console.warn('[AuthContext] Profile fetch still in-flight at init timeout — releasing lock');
+          isFetchingProfileRef.current = false;
+          setIsProfileLoading(false);
+        }
       }
     }, 10_000);
 
@@ -382,14 +417,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // ── Subsequent events ────────────────────────────────────────────────
       if (newSession?.user) {
         // Valid session change (SIGNED_IN, TOKEN_REFRESHED with user, etc.)
+        // Reset recovery flag so a fresh retry is available for this session.
+        hasTriedProfileRecovery.current = false;
         setSession(newSession);
         setUser(newSession.user);
         await fetchUserProfile(newSession.user.id);
-      } else if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
-        // Explicit logout or account deletion — clear atomically.
+      } else if (event === 'SIGNED_OUT') {
+        // Explicit logout — clear atomically.
         console.log('[Auth State Change]', event, '— clearing all state (atomic)');
         clearAll();
         userProfileRef.current = null;
+        hasTriedProfileRecovery.current = false;
       }
       // For any other null-session event (TOKEN_REFRESHED failure, network blip)
       // keep existing state intact — AppState listener will re-validate on resume.
@@ -777,11 +815,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const profile: UserProfile = {
         id: userData.id,
         email: userData.email,
-        name: userData.name,
+        first_name: userData.first_name || instructorData.name?.split(' ')[0] || 'Instructor',
+        last_name: userData.last_name || instructorData.name?.split(' ').slice(1).join(' ') || '',
         role: userData.role,
         university_id: userData.university_id,
         university_name: userData.universities?.name || '',
         profile_picture_url: userData.profile_picture_url,
+        is_active: userData.is_active !== undefined ? userData.is_active : true,
+        created_at: userData.created_at || new Date().toISOString(),
       };
 
       setUserProfile(profile);
@@ -854,11 +895,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // If userRole is null, don't redirect - user is still completing signup
       }
       
-      // If already in main app but profile didn't load after the fetch settled,
-      // redirect back to login so the user can re-authenticate.
-      // NOTE: isProfileLoading was checked above — if we reach here, the fetch is done.
+      // If the profile is missing after loading settled, it may be because the
+      // cold-start fetch was aborted (slow Android radio / network).  Retry once
+      // before sending the user to the welcome screen — this avoids a false logout
+      // on every cold start when the network is briefly unavailable.
+      // Only applies outside the auth group so in-progress signup flows are
+      // not disturbed (they don't have a profile row yet).
       if (!inAuthGroup && !userRole && !isSignupInProgress) {
-        console.log('[Navigation] Authenticated but profile unavailable after fetch — redirecting to welcome');
+        if (!hasTriedProfileRecovery.current) {
+          hasTriedProfileRecovery.current = true;
+          const { user: storeUser } = useAuthStore.getState();
+          if (storeUser) {
+            console.log('[Navigation] Authenticated but no profile after init — retrying profile fetch once');
+            fetchUserProfile(storeUser.id); // isProfileLoading → true → guard re-runs on change
+            return;
+          }
+        }
+        // Retry already attempted (or no user in store) — fall back to welcome.
+        console.log('[Navigation] Authenticated but profile unavailable after retry — redirecting to welcome');
         router.replace('/(auth)/welcome');
       }
     }
