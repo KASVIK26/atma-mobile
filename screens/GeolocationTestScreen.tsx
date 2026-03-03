@@ -16,11 +16,13 @@ import {
   RoomGeometry
 } from '@/lib/geolocation-service';
 import { getNearestBuildingSurfacePressure } from '@/lib/pressure-service';
+import supabase from '@/lib/supabase';
 import { MaterialIcons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -31,17 +33,17 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// ─── Classroom test geometry (Indore zone) ────────────────────────────────────
-const ROOM_GEOMETRY: RoomGeometry = {
-  type: 'Polygon',
-  coordinates: [
-    [75.784611, 23.167191],
-    [75.784614, 23.167137],
-    [75.784665, 23.167132],
-    [75.784665, 23.167181],
-    [75.784611, 23.167191],
-  ] as number[][],
-};
+// ─── Building / room dropdown option types ────────────────────────────────────
+interface BuildingOption { id: string; name: string; code?: string | null; }
+interface RoomOption {
+  id: string;
+  room_number: string;
+  room_name: string | null;
+  floor_number: number;
+  geofence_geojson: any;
+  latitude?: number | null;
+  longitude?: number | null;
+}
 const FALLBACK_PRESSURE_HPA = 956.72;   // used only if Open-Meteo is unreachable
 const GPS_THRESHOLD_M = 12;
 // 2.8 m covers the ~0.3 hPa Open-Meteo model bias (≈ 2.1 m at 956 hPa) with extra margin.
@@ -72,7 +74,17 @@ function polygonCenter(coords: number[][]): [number, number] {
   const lon = coords.reduce((s, c) => s + c[0], 0) / coords.length;
   return [lat, lon];
 }
-const [CENTER_LAT, CENTER_LON] = polygonCenter(ROOM_GEOMETRY.coordinates as number[][]);
+/** Normalise a GeoJSON Polygon's coordinates to a flat ring [[lon, lat], …] */
+function extractPolygonRing(geojson: any): [number, number][] | null {
+  if (!geojson || geojson.type !== 'Polygon') return null;
+  const coords = geojson.coordinates;
+  if (!Array.isArray(coords) || coords.length === 0) return null;
+  const first = coords[0];
+  // Standard GeoJSON wraps rings in an outer array: coordinates[0] is the outer ring
+  if (Array.isArray(first) && Array.isArray(first[0])) return first as [number, number][];
+  // Already a flat ring
+  return coords as [number, number][];
+}
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 const StatusBadge = ({ status, colors }: { status: StepStatus; colors: any }) => {
@@ -128,7 +140,7 @@ const AccuracyBar = ({ accuracy, colors }: { accuracy: number; colors: any }) =>
 // ─── Main ──────────────────────────────────────────────────────────────────────
 export function GeolocationTestScreen() {
   const { colors } = useTheme();
-  const { user } = useAuth();
+  const { user, userProfile, enrollments, instructor } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [permissionGranted, setPermissionGranted]   = useState(false);
@@ -146,14 +158,28 @@ export function GeolocationTestScreen() {
   const [gpsStep, setGpsStep]         = useState<StepStatus>('idle');
   const [baroStep, setBaroStep]       = useState<StepStatus>('idle');
 
-  const pulseAnim    = useRef(new Animated.Value(1)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
+  // ── Building / room selection ──
+  const [buildings, setBuildings]                   = useState<BuildingOption[]>([]);
+  const [rooms, setRooms]                           = useState<RoomOption[]>([]);
+  const [selectedBuilding, setSelectedBuilding]     = useState<BuildingOption | null>(null);
+  const [selectedRoom, setSelectedRoom]             = useState<RoomOption | null>(null);
+  const [buildingPickerOpen, setBuildingPickerOpen] = useState(false);
+  const [roomPickerOpen, setRoomPickerOpen]         = useState(false);
+  const [buildingsLoading, setBuildingsLoading]     = useState(false);
+  const [roomsLoading, setRoomsLoading]             = useState(false);
+  const [roomGeometry, setRoomGeometry]             = useState<RoomGeometry | null>(null);
+  const [roomCenter, setRoomCenter]                 = useState<[number, number] | null>(null);
+  const [autoLoadLabel, setAutoLoadLabel]           = useState<string | null>(null);
 
-  const liveDistance   = liveLocation ? calculateDistance([liveLocation.latitude, liveLocation.longitude], [CENTER_LAT, CENTER_LON]) : null;
+  const pulseAnim     = useRef(new Animated.Value(1)).current;
+  const progressAnim  = useRef(new Animated.Value(0)).current;
+  const roomCenterRef = useRef<[number, number] | null>(null);
+
+  const liveDistance   = liveLocation && roomCenter ? calculateDistance([liveLocation.latitude, liveLocation.longitude], roomCenter) : null;
   const liveHeightDiff = liveBaro ? calculateFloorHeightFromPressure(surfacePressure, liveBaro.pressure) : null;
   const liveFloor      = liveBaro ? estimateFloorNumber(surfacePressure, liveBaro.pressure) : null;
 
-  // Permissions + initial location + live surface pressure
+  // Permissions + initial location
   useEffect(() => {
     (async () => {
       const granted = await requestLocationPermissions();
@@ -162,9 +188,14 @@ export function GeolocationTestScreen() {
         const loc = await getCurrentLocation();
         if (loc) setLiveLocation(loc);
       }
+    })();
+  }, []);
 
-      // Fetch live surface pressure — DB first (hourly Edge Fn), then Open-Meteo direct, then fallback
-      const pressResult = await getNearestBuildingSurfacePressure(CENTER_LAT, CENTER_LON);
+  // Surface pressure — re-fetched whenever the selected room's center changes
+  useEffect(() => {
+    if (!roomCenter) return;
+    (async () => {
+      const pressResult = await getNearestBuildingSurfacePressure(roomCenter[0], roomCenter[1]);
       setSurfacePressure(pressResult.pressure_hpa);
       setSurfacePressureSource(
         pressResult.source === 'database' ? 'database'
@@ -173,7 +204,133 @@ export function GeolocationTestScreen() {
       );
       console.log(`[GeoTest] Surface pressure: ${pressResult.pressure_hpa.toFixed(2)} hPa (${pressResult.source})`);
     })();
-  }, []);
+  }, [roomCenter]);
+
+  // Keep roomCenterRef in sync (used inside runScan callback without re-creating it)
+  useEffect(() => { roomCenterRef.current = roomCenter; }, [roomCenter]);
+
+  // Load buildings for the user's university
+  useEffect(() => {
+    const universityId = userProfile?.university_id;
+    if (!universityId) return;
+    setBuildingsLoading(true);
+    supabase
+      .from('buildings')
+      .select('id, name, code')
+      .eq('university_id', universityId)
+      .eq('is_active', true)
+      .order('name')
+      .then(({ data }) => {
+        setBuildings((data || []) as BuildingOption[]);
+        setBuildingsLoading(false);
+      });
+  }, [userProfile?.university_id]);
+
+  // Load rooms whenever selected building changes
+  useEffect(() => {
+    if (!selectedBuilding) { setRooms([]); return; }
+    setRoomsLoading(true);
+    supabase
+      .from('rooms')
+      .select('id, room_number, room_name, floor_number, geofence_geojson, latitude, longitude')
+      .eq('building_id', selectedBuilding.id)
+      .eq('is_active', true)
+      .order('room_number')
+      .then(({ data }) => {
+        setRooms((data || []) as RoomOption[]);
+        setRoomsLoading(false);
+      });
+  }, [selectedBuilding?.id]);
+
+  // Auto-load from the current ongoing or next upcoming lecture
+  useEffect(() => {
+    const universityId = userProfile?.university_id;
+    if (!universityId) return;
+    const now   = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    (async () => {
+      let sessions: any[] = [];
+      if (userProfile?.role === 'student' && enrollments && enrollments.length > 0) {
+        const sectionIds = enrollments.map((e) => e.section_id);
+        const { data } = await supabase
+          .from('lecture_sessions')
+          .select('id, session_date, start_time, end_time, scheduled_start_time, scheduled_end_time, room_id, courses(code, name)')
+          .in('section_id', sectionIds)
+          .eq('session_date', today)
+          .eq('is_active', true)
+          .eq('is_cancelled', false)
+          .order('start_time', { ascending: true });
+        sessions = data || [];
+      } else if (instructor?.id) {
+        const { data } = await supabase
+          .from('lecture_sessions')
+          .select('id, session_date, start_time, end_time, scheduled_start_time, scheduled_end_time, room_id, instructor_ids, courses(code, name)')
+          .eq('university_id', universityId)
+          .eq('session_date', today)
+          .eq('is_active', true)
+          .eq('is_cancelled', false)
+          .order('start_time', { ascending: true });
+        sessions = (data || []).filter((s: any) =>
+          Array.isArray(s.instructor_ids) && s.instructor_ids.includes(instructor!.id)
+        );
+      }
+      if (sessions.length === 0) return;
+
+      const timeStr = now.toTimeString().substring(0, 8);
+      let target = sessions.find((s: any) => {
+        const st = s.scheduled_start_time || s.start_time;
+        const et = s.scheduled_end_time   || s.end_time;
+        return st && et && timeStr >= st && timeStr <= et;
+      });
+      if (!target) target = sessions.find((s: any) => {
+        const st = s.scheduled_start_time || s.start_time;
+        return st && timeStr < st;
+      });
+      if (!target?.room_id) return;
+
+      const { data: roomRow } = await supabase
+        .from('rooms')
+        .select('id, room_number, room_name, floor_number, geofence_geojson, latitude, longitude, building_id, buildings(id, name, code)')
+        .eq('id', target.room_id)
+        .single();
+      if (!roomRow?.buildings) return;
+
+      const bld = roomRow.buildings as any;
+      setSelectedBuilding({ id: bld.id, name: bld.name, code: bld.code });
+
+      const { data: bldRooms } = await supabase
+        .from('rooms')
+        .select('id, room_number, room_name, floor_number, geofence_geojson, latitude, longitude')
+        .eq('building_id', bld.id)
+        .eq('is_active', true)
+        .order('room_number');
+      setRooms((bldRooms || []) as RoomOption[]);
+
+      const selRoom: RoomOption = {
+        id: roomRow.id, room_number: roomRow.room_number, room_name: roomRow.room_name,
+        floor_number: roomRow.floor_number, geofence_geojson: roomRow.geofence_geojson,
+        latitude: roomRow.latitude, longitude: roomRow.longitude,
+      };
+      setSelectedRoom(selRoom);
+
+      const ring = extractPolygonRing(roomRow.geofence_geojson);
+      if (ring && ring.length >= 3) {
+        setRoomGeometry({ type: 'Polygon', coordinates: ring });
+        setRoomCenter(polygonCenter(ring));
+      } else if (roomRow.latitude && roomRow.longitude) {
+        setRoomCenter([parseFloat(roomRow.latitude), parseFloat(roomRow.longitude)]);
+      }
+
+      const isOngoing = (() => {
+        const st = target.scheduled_start_time || target.start_time;
+        const et = target.scheduled_end_time   || target.end_time;
+        return st && et && timeStr >= st && timeStr <= et;
+      })();
+      const courseCode = (target.courses as any)?.code || '';
+      setAutoLoadLabel(`Auto · ${isOngoing ? 'Ongoing' : 'Upcoming'}${courseCode ? ': ' + courseCode : ''}`);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile?.role, userProfile?.university_id, enrollments?.length, instructor?.id]);
 
   // Live barometer subscription
   useEffect(() => {
@@ -217,6 +374,10 @@ export function GeolocationTestScreen() {
 
   const runScan = useCallback(async () => {
     if (scanStatus === 'scanning' || !permissionGranted) return;
+    if (!roomCenterRef.current) {
+      // No room selected — nothing to scan against
+      setScanStatus('fail'); setGpsStep('fail'); setBaroStep('skipped'); return;
+    }
     setScanStatus('scanning');
     setScanProgress(0);
     setScanResult(null);
@@ -238,7 +399,8 @@ export function GeolocationTestScreen() {
       }
 
       const best = samples.reduce((a, b) => (a.accuracy < b.accuracy ? a : b));
-      const dist = calculateDistance([best.latitude, best.longitude], [CENTER_LAT, CENTER_LON]);
+      const center = roomCenterRef.current!;
+      const dist = calculateDistance([best.latitude, best.longitude], center);
       const gpsPass = dist <= GPS_THRESHOLD_M;
       setGpsStep(gpsPass ? 'pass' : 'fail');
 
@@ -268,10 +430,29 @@ export function GeolocationTestScreen() {
     }
   }, [scanStatus, permissionGranted, liveBaro]);
 
-  const resetScan = () => {
+  const resetScan = useCallback(() => {
     setScanStatus('idle'); setScanProgress(0); setScanResult(null);
     setGpsStep('idle'); setBaroStep('idle'); progressAnim.setValue(0);
-  };
+  }, [progressAnim]);
+
+  const handleRoomSelect = useCallback((room: RoomOption) => {
+    setSelectedRoom(room);
+    const ring = extractPolygonRing(room.geofence_geojson);
+    if (ring && ring.length >= 3) {
+      setRoomGeometry({ type: 'Polygon', coordinates: ring });
+      setRoomCenter(polygonCenter(ring));
+    } else if (room.latitude && room.longitude) {
+      setRoomGeometry(null);
+      setRoomCenter([parseFloat(String(room.latitude)), parseFloat(String(room.longitude))]);
+    } else {
+      setRoomGeometry(null);
+      setRoomCenter(null);
+    }
+    setScanStatus('idle'); setScanProgress(0); setScanResult(null);
+    setGpsStep('idle'); setBaroStep('idle'); progressAnim.setValue(0);
+    setAutoLoadLabel(null);
+    setRoomPickerOpen(false);
+  }, [progressAnim]);
 
   // ── Styles ──
   const s = StyleSheet.create({
@@ -314,6 +495,56 @@ export function GeolocationTestScreen() {
       </View>
 
       <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+
+        {/* ── Room selector ── */}
+        <View style={s.card}>
+          <Text style={s.cardTitle}>Select Room</Text>
+          {autoLoadLabel && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: colors.primary + '15' }}>
+              <MaterialIcons name="auto-awesome" size={13} color={colors.primary} />
+              <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600', flex: 1 }}>{autoLoadLabel}</Text>
+            </View>
+          )}
+          {/* Building dropdown trigger */}
+          <Pressable
+            onPress={() => { if (!buildingsLoading) setBuildingPickerOpen(true); }}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 13, borderRadius: 12, backgroundColor: colors.background, borderWidth: 1, borderColor: selectedBuilding ? colors.primary + '60' : colors.border, marginBottom: 10 }}
+          >
+            <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+              <MaterialIcons name="business" size={16} color={colors.primary} />
+            </View>
+            <Text style={{ flex: 1, fontSize: 14, color: selectedBuilding ? colors.textPrimary : colors.textTertiary, fontWeight: selectedBuilding ? '600' : '400' }}>
+              {buildingsLoading ? 'Loading buildings…' : selectedBuilding ? selectedBuilding.name : 'Select Building'}
+            </Text>
+            {selectedBuilding?.code && <Text style={{ fontSize: 11, color: colors.textSecondary, marginRight: 6 }}>{selectedBuilding.code}</Text>}
+            <MaterialIcons name="expand-more" size={20} color={colors.textSecondary} />
+          </Pressable>
+          {/* Room dropdown trigger */}
+          <Pressable
+            onPress={() => { if (selectedBuilding && !roomsLoading) setRoomPickerOpen(true); }}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 13, borderRadius: 12, backgroundColor: colors.background, borderWidth: 1, borderColor: selectedRoom ? colors.primary + '60' : colors.border, opacity: selectedBuilding ? 1 : 0.45 }}
+          >
+            <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: selectedRoom ? colors.primaryLight : colors.border + '60', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+              <MaterialIcons name="meeting-room" size={16} color={selectedRoom ? colors.primary : colors.textTertiary} />
+            </View>
+            <Text style={{ flex: 1, fontSize: 14, color: selectedRoom ? colors.textPrimary : colors.textTertiary, fontWeight: selectedRoom ? '600' : '400' }}>
+              {roomsLoading ? 'Loading rooms…' : selectedRoom
+                ? `${selectedRoom.room_number}${selectedRoom.room_name ? ' · ' + selectedRoom.room_name : ''}`
+                : selectedBuilding ? 'Select Room' : 'Select a building first'}
+            </Text>
+            {selectedRoom && <Text style={{ fontSize: 11, color: colors.textSecondary, marginRight: 6 }}>Floor {selectedRoom.floor_number}</Text>}
+            <MaterialIcons name="expand-more" size={20} color={colors.textSecondary} />
+          </Pressable>
+          {!roomGeometry && selectedRoom && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.warning + '18' }}>
+              <MaterialIcons name="warning" size={13} color={colors.warning} />
+              <Text style={{ fontSize: 11, color: colors.warning, fontWeight: '600', flex: 1 }}>No polygon data — GPS distance to room centre only</Text>
+            </View>
+          )}
+          {!selectedRoom && (
+            <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 10, textAlign: 'center' }}>Select a room to enable the verification scan</Text>
+          )}
+        </View>
 
         {/* ── Result banner ── */}
         {scanResult && (
@@ -401,9 +632,9 @@ export function GeolocationTestScreen() {
             </View>
           ) : (
             <Pressable
-              style={[s.scanBtn, { backgroundColor: permissionGranted ? colors.primary : colors.textTertiary, shadowColor: permissionGranted ? colors.primary : 'transparent' }]}
+              style={[s.scanBtn, { backgroundColor: (permissionGranted && !!roomCenter) ? colors.primary : colors.textTertiary, shadowColor: (permissionGranted && !!roomCenter) ? colors.primary : 'transparent' }]}
               onPress={runScan}
-              disabled={!permissionGranted}
+              disabled={!permissionGranted || !roomCenter}
             >
               <MaterialIcons name="gps-fixed" size={20} color="#fff" />
               <Text style={s.scanBtnTxt}>{scanStatus === 'idle' ? 'Start Verification Scan' : 'Scan Again'}</Text>
@@ -484,9 +715,10 @@ export function GeolocationTestScreen() {
         </View>
 
         {/* ── Map ── */}
+        {roomGeometry && (
         <View style={s.mapCard}>
           <View style={s.mapTitle}>
-            <Text style={[s.cardTitle, { marginBottom: 0 }]}>Classroom Polygon  ·  Indore</Text>
+            <Text style={[s.cardTitle, { marginBottom: 0 }]}>Classroom Polygon</Text>
             {scanResult && (
               <Text style={{ fontSize: 12, marginTop: 2, color: scanResult.overall === 'pass' ? colors.success : '#FF3B30' }}>
                 {scanResult.overall === 'pass' ? '✓ Inside classroom' : '✗ Outside classroom'}
@@ -494,25 +726,15 @@ export function GeolocationTestScreen() {
             )}
           </View>
           <MapPolygonVisualization
-            polygon={ROOM_GEOMETRY.coordinates as Array<[number, number]>}
+            polygon={roomGeometry.coordinates as Array<[number, number]>}
             currentLocation={liveLocation || undefined}
             isInside={scanResult?.overall === 'pass' || false}
-            title="Classroom · Indore"
+            title="Classroom Polygon"
             height={280}
+            hideInfoPanel
           />
         </View>
-
-        {/* ── Classroom info ── */}
-        <View style={s.card}>
-          <Text style={s.cardTitle}>Classroom Geometry</Text>
-          <MetricRow label="Type"            value="Polygon"                                                   icon="hexagon"             colors={colors} />
-          <MetricRow label="Vertices"        value={`${(ROOM_GEOMETRY.coordinates as number[][]).length}`}     icon="grain"               colors={colors} />
-          <MetricRow label="Center lat"      value={CENTER_LAT.toFixed(6)}                                     icon="my-location"         colors={colors} />
-          <MetricRow label="Center lon"      value={CENTER_LON.toFixed(6)}                                     icon="my-location"         colors={colors} />
-          <MetricRow label="GPS threshold"   value={`${GPS_THRESHOLD_M} m`}                                    icon="radio-button-checked" colors={colors} />
-          <MetricRow label="Baro baseline"   value={`${surfacePressure.toFixed(2)} hPa`}                            icon="adjust"              colors={colors} />
-          <MetricRow label="Floor tolerance" value={`± ${BARO_TOLERANCE_M} m`}                                 icon="height"              colors={colors} last />
-        </View>
+        )}
 
         {/* ── Debug ── */}
         <View style={[s.card, { borderStyle: 'dashed' }]}>
@@ -520,6 +742,9 @@ export function GeolocationTestScreen() {
           <Text style={{ fontFamily: 'monospace', fontSize: 11, color: colors.textSecondary, lineHeight: 18 }}>
             {`user.id      : ${user?.id?.substring(0, 16) ?? 'n/a'}…\n`}
             {`gps perm     : ${permissionGranted}\n`}
+            {`building     : ${selectedBuilding?.name ?? 'none'}\n`}
+            {`room         : ${selectedRoom ? selectedRoom.room_number + (selectedRoom.room_name ? ' · ' + selectedRoom.room_name : '') : 'none'}\n`}
+            {`has polygon  : ${roomGeometry ? 'yes' : 'no'}\n`}
             {`baro source  : ${baroAvailable === true ? 'hardware' : baroAvailable === false ? 'mock' : 'detecting'}\n`}
             {`scan samples : ${SCAN_SAMPLES} × ${SCAN_INTERVAL_MS}ms\n`}
             {`gps thresh   : ${GPS_THRESHOLD_M} m\n`}
@@ -529,6 +754,94 @@ export function GeolocationTestScreen() {
         </View>
 
       </ScrollView>
+
+      {/* ── Building picker modal ── */}
+      <Modal visible={buildingPickerOpen} transparent animationType="fade" onRequestClose={() => setBuildingPickerOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }} onPress={() => setBuildingPickerOpen(false)}>
+          <Pressable style={{ backgroundColor: colors.cardBackground, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingBottom: insets.bottom + 16, maxHeight: '70%' }} onPress={(e) => e.stopPropagation()}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
+              <Text style={{ flex: 1, fontSize: 17, fontWeight: '800', color: colors.textPrimary }}>Select Building</Text>
+              <Pressable onPress={() => setBuildingPickerOpen(false)} style={{ padding: 4 }}>
+                <MaterialIcons name="close" size={22} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {buildings.length === 0 ? (
+                <View style={{ paddingVertical: 36, alignItems: 'center' }}>
+                  <MaterialIcons name="business" size={32} color={colors.textTertiary} />
+                  <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 8 }}>No buildings found</Text>
+                </View>
+              ) : buildings.map((b) => (
+                <Pressable
+                  key={b.id}
+                  onPress={() => {
+                    if (selectedBuilding?.id !== b.id) {
+                      setSelectedBuilding(b);
+                      setSelectedRoom(null); setRoomGeometry(null); setRoomCenter(null);
+                      setScanStatus('idle'); setScanProgress(0); setScanResult(null);
+                      setGpsStep('idle'); setBaroStep('idle'); progressAnim.setValue(0);
+                      setAutoLoadLabel(null);
+                    }
+                    setBuildingPickerOpen(false);
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, backgroundColor: selectedBuilding?.id === b.id ? colors.primary + '10' : 'transparent' }}
+                >
+                  <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
+                    <MaterialIcons name="business" size={18} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: selectedBuilding?.id === b.id ? colors.primary : colors.textPrimary }}>{b.name}</Text>
+                    {b.code && <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{b.code}</Text>}
+                  </View>
+                  {selectedBuilding?.id === b.id && <MaterialIcons name="check" size={20} color={colors.primary} />}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Room picker modal ── */}
+      <Modal visible={roomPickerOpen} transparent animationType="fade" onRequestClose={() => setRoomPickerOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }} onPress={() => setRoomPickerOpen(false)}>
+          <Pressable style={{ backgroundColor: colors.cardBackground, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingBottom: insets.bottom + 16, maxHeight: '72%' }} onPress={(e) => e.stopPropagation()}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
+              <Text style={{ flex: 1, fontSize: 17, fontWeight: '800', color: colors.textPrimary }}>Select Room</Text>
+              <Pressable onPress={() => setRoomPickerOpen(false)} style={{ padding: 4 }}>
+                <MaterialIcons name="close" size={22} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {rooms.length === 0 ? (
+                <View style={{ paddingVertical: 36, alignItems: 'center' }}>
+                  <MaterialIcons name="meeting-room" size={32} color={colors.textTertiary} />
+                  <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 8 }}>No rooms found</Text>
+                </View>
+              ) : rooms.map((r) => (
+                <Pressable
+                  key={r.id}
+                  onPress={() => handleRoomSelect(r)}
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, backgroundColor: selectedRoom?.id === r.id ? colors.primary + '10' : 'transparent' }}
+                >
+                  <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: r.geofence_geojson ? colors.primaryLight : colors.border + '60', alignItems: 'center', justifyContent: 'center', marginRight: 14 }}>
+                    <MaterialIcons name="meeting-room" size={18} color={r.geofence_geojson ? colors.primary : colors.textTertiary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: selectedRoom?.id === r.id ? colors.primary : colors.textPrimary }}>
+                      {r.room_number}{r.room_name ? ` · ${r.room_name}` : ''}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                      Floor {r.floor_number} · {r.geofence_geojson ? 'Polygon available' : 'No polygon'}
+                    </Text>
+                  </View>
+                  {selectedRoom?.id === r.id && <MaterialIcons name="check" size={20} color={colors.primary} />}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
     </SafeAreaView>
   );
 }

@@ -12,13 +12,15 @@ interface MapPolygonVisualizationProps {
   isInside?: boolean; // If true, polygon will be green, else red
   title?: string;
   height?: number;
+  hideInfoPanel?: boolean; // If true, the overlay info card inside the map is hidden
 }
 
 const createMapHTML = (
   polygon: [number, number][],
   currentLocation?: MapPolygonVisualizationProps['currentLocation'],
   title: string = 'Classroom Location',
-  isInside: boolean = false
+  isInside: boolean = false,
+  hideInfoPanel: boolean = false
 ) => {
   // Calculate polygon center for map focus
   const centerLon = polygon.reduce((sum, coord) => sum + coord[0], 0) / polygon.length;
@@ -110,6 +112,7 @@ const createMapHTML = (
     </head>
     <body>
       <div id="map"></div>
+      ${hideInfoPanel ? '' : `
       <div class="info-panel">
         <h4><span class="live-indicator"></span>Live Location</h4>
         <div class="info-item"><strong>Status:</strong> ${isInside ? '✅ INSIDE CLASSROOM' : '❌ OUTSIDE CLASSROOM'}</div>
@@ -120,7 +123,7 @@ const createMapHTML = (
           ${currentLocation.accuracy ? `<div class="info-item"><strong>Accuracy:</strong> ${currentLocation.accuracy.toFixed(1)}m</div>` : ''}
           <div class="badge">${isInside ? '✅ Inside Classroom' : '❌ Outside Classroom'}</div>
         ` : ''}
-      </div>
+      </div>`}
 
       <script>
         // Initialize map
@@ -232,10 +235,11 @@ export default function MapPolygonVisualization({
   isInside = false,
   title = 'Classroom Location',
   height = 400,
+  hideInfoPanel = false,
 }: MapPolygonVisualizationProps) {
   const mapHTML = useMemo(
-    () => createMapHTML(polygon, currentLocation, title, isInside),
-    [polygon, currentLocation, title, isInside]
+    () => createMapHTML(polygon, currentLocation, title, isInside, hideInfoPanel),
+    [polygon, currentLocation, title, isInside, hideInfoPanel]
   );
 
   return (
