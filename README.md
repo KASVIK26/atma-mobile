@@ -37,14 +37,14 @@ ATMA Mobile is a production-ready mobile application designed for academic insti
 <td align="center" width="33%">
 <strong>Welcome Screen</strong><br><br>
 
-![Welcome](./screenshots/Screenshot_1772986005.png)
+![Welcome](./screenshots/Screenshot_1772986298.png)
 
 *Beautiful onboarding experience*
 </td>
 <td align="center" width="33%">
 <strong>Role Selection</strong><br><br>
 
-![Role Selection](./screenshots/Screenshot_1772986298.png)
+![Role Selection](./screenshots/Screenshot_1772986005.png)
 
 *Choose your role: Student or Instructor*
 </td>
