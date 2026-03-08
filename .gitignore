@@ -39,17 +39,20 @@ yarn-error.*
 
 # Backup & Temporary
 *.bak
+*.tmp
 app-example
 
-# Documentation, Database & Design (Dev only)
+# Documentation & Database (Local Development Only)
 *.md
 !README.md
 *.sql
+
+# Development-Only Folders (Local Reference)
+/context-documentation/
+/Icons_Android/
+/ui-designs/
+/supabase/functions/
 migrations/
-Icons_Android/
-context-documentation/
-ui-designs/
-supabase/functions/
 
 # generated native folders
 /ios
