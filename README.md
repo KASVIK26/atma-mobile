@@ -141,9 +141,9 @@ ATMA Mobile is a production-ready mobile application designed for academic insti
 |:---:|:---:|:---:|:---:|
 | ![Feat1](./screenshots/Screenshot_1772988133.png) | ![Feat2](./screenshots/Screenshot_1772988231.png) | ![Feat3](./screenshots/Screenshot_1772988239.png) | ![Feat4](./screenshots/Screenshot_1772988318.png) |
 
-| Feature 5 | Feature 6 |
+| Feature 5 | 
 |:---:|:---:|
-| ![Feat5](./screenshots/Screenshot_1772988330.png) | ![Feat6](./screenshots/Screenshot_1772988330.png) |
+| ![Feat5](./screenshots/Screenshot_1772988330.png) |
 
 *Complete feature set with intuitive navigation*
 
