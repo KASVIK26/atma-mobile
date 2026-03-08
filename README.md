@@ -135,18 +135,38 @@ ATMA Mobile is a production-ready mobile application designed for academic insti
 
 ### Extended Functionality
 
+<table>
+<tr>
+<td align="center" width="33%">
+<img src="./screenshots/Screenshot_1772988133.png" width="100%" alt="Feature 1"/>
+<br><small>Feature 1</small>
+</td>
+<td align="center" width="33%">
+<img src="./screenshots/Screenshot_1772988231.png" width="100%" alt="Feature 2"/>
+<br><small>Feature 2</small>
+</td>
+<td align="center" width="33%">
+<img src="./screenshots/Screenshot_1772988239.png" width="100%" alt="Feature 3"/>
+<br><small>Feature 3</small>
+</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td align="center" width="50%">
+<img src="./screenshots/Screenshot_1772988318.png" width="100%" alt="Feature 4"/>
+<br><small>Feature 4</small>
+</td>
+<td align="center" width="50%">
+<img src="./screenshots/Screenshot_1772988330.png" width="100%" alt="Feature 5"/>
+<br><small>Feature 5</small>
+</td>
+</tr>
+</table>
+
 <div align="center">
-
-| Feature 1 | Feature 2 | Feature 3 | Feature 4 |
-|:---:|:---:|:---:|:---:|
-| ![Feat1](./screenshots/Screenshot_1772988133.png) | ![Feat2](./screenshots/Screenshot_1772988231.png) | ![Feat3](./screenshots/Screenshot_1772988239.png) | ![Feat4](./screenshots/Screenshot_1772988318.png) |
-
-| Feature 5 | 
-|:---:|:---:|
-| ![Feat5](./screenshots/Screenshot_1772988330.png) |
-
-*Complete feature set with intuitive navigation*
-
+<em>Complete feature set with intuitive navigation</em>
 </div>
 
 ---
