@@ -10,48 +10,93 @@
  */
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function NetworkStatusBanner() {
   const isOnline = useNetworkStatus();
   const insets = useSafeAreaInsets();
-
+  
+  // Track if banner should be visible at all
+  const [shouldRender, setShouldRender] = useState(false);
+  
   // Animate the banner in/out smoothly
   const translateY = useRef(new Animated.Value(-60)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
   const prevOnline = useRef(true);
+  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!isOnline && prevOnline.current) {
-      // Going offline — slide the banner down into view
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        speed: 14,
-        bounciness: 4,
-      }).start();
-    } else if (isOnline && !prevOnline.current) {
-      // Coming back online — slide it back up after a short delay
-      setTimeout(() => {
-        Animated.timing(translateY, {
-          toValue: -60,
-          duration: 350,
+      // Going offline — ensure banner is rendered and slide it down
+      setShouldRender(true);
+      
+      // Clear any pending hide timeout
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+        hideTimeoutRef.current = null;
+      }
+      
+      // Animate in
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 0,
           useNativeDriver: true,
-        }).start();
+          speed: 14,
+          bounciness: 4,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else if (isOnline && !prevOnline.current) {
+      // Coming back online — animate out and hide completely
+      hideTimeoutRef.current = setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(translateY, {
+            toValue: -60,
+            duration: 350,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0,
+            duration: 350,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          // After animation completes, remove from DOM completely
+          setShouldRender(false);
+          // Reset animations for next time
+          translateY.setValue(-60);
+          opacity.setValue(0);
+        });
       }, 1500);
     }
+    
     prevOnline.current = isOnline;
-  }, [isOnline, translateY]);
 
-  // Don't render the DOM node at all while definitely online on first load
-  if (isOnline && prevOnline.current) return null;
+    return () => {
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+    };
+  }, [isOnline, translateY, opacity]);
+
+  // Don't render the DOM node at all when it should be hidden
+  if (!shouldRender) return null;
 
   return (
     <Animated.View
       style={[
         styles.banner,
-        { top: insets.top, transform: [{ translateY }] },
+        { 
+          top: insets.top,
+          transform: [{ translateY }],
+          opacity,
+        },
       ]}
       pointerEvents="none"
     >

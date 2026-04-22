@@ -16,14 +16,15 @@
         "NSLocationWhenInUseUsageDescription": "We need your location to verify your attendance at the classroom",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "We need your location to verify your attendance at the classroom",
         "NSLocationAlwaysUsageDescription": "We need your location to verify your attendance at the classroom",
-        "NSMotionUsageDescription": "We need access to your device's barometer (pressure sensor) to verify your location on the correct floor"
-      }
+        "NSMotionUsageDescription": "We need access to your device's barometer (pressure sensor) to verify your location on the correct floor",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.kasvik26.atmamobile"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
-        "foregroundImage": "./Icons_Android/mipmap-hdpi/ic_launcher_foreground.png",
-        "backgroundImage": "./Icons_Android/mipmap-hdpi/ic_launcher_background.png"
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,

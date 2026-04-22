@@ -17,7 +17,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const createStyles = (colors: any) => StyleSheet.create({
+const createStyles = (colors: any, theme: string) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -32,43 +32,30 @@ const createStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
+    paddingVertical: 12,
   },
-  logoSection: {
+  logoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  logoBg: {
-    width: 44,
-    height: 44,
+  logoImage: {
+    width: 40,
+    height: 40,
     borderRadius: 10,
-    backgroundColor: colors.primaryLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   headerBrand: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: colors.textPrimary,
   },
   profileButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.inputBackground,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  headerDivider: {
-    height: 1,
-    backgroundColor: colors.border,
   },
   scrollContainer: {
     paddingHorizontal: 16,
@@ -183,7 +170,7 @@ export const RoleSelectionScreen = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, theme } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
 
   useEffect(() => {
     StatusBar.setBackgroundColor('transparent');
@@ -195,21 +182,18 @@ export const RoleSelectionScreen = () => {
       <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} backgroundColor="transparent" translucent />
       <Animated.View entering={FadeInDown.delay(0)} style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.headerTop}>
-            <View style={styles.logoSection}>
-              <View style={styles.logoBg}>
-                <Image
-                  source={require('@/assets/images/ATMA-inApp.png')}
-                  style={{ width: 44, height: 44, borderRadius: 10 }}
-                  resizeMode="contain"
-                />
-              </View>
-              <Text style={styles.headerBrand}>ATMA</Text>
-            </View>
+          <View style={styles.logoContainer}>
+            <Image
+              source={require('@/assets/images/ATMA-inApp.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+            <Text style={styles.headerBrand}>ATMA</Text>
+          </View>
           <Pressable style={styles.profileButton}>
-            <MaterialIcons name="account-circle" size={40} color={colors.textTertiary} />
+            <MaterialIcons name="account-circle" size={32} color={colors.textTertiary} />
           </Pressable>
         </View>
-        <View style={styles.headerDivider} />
       </Animated.View>
 
       <ScrollView contentContainerStyle={styles.scrollContainer}>

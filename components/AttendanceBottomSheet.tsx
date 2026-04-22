@@ -1,5 +1,6 @@
 import { useTheme } from '@/context/ThemeContext';
 import { ClassWithStatus } from '@/lib/dashboard-service';
+import supabase from '@/lib/supabase';
 import { MaterialIcons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
 import {
@@ -270,6 +271,42 @@ export const AttendanceBottomSheet: React.FC<AttendanceBottomSheetProps> = ({
 
     setIsSubmitting(true);
     try {
+      // Pre-check: Verify attendance hasn't already been marked (prevent duplicates)
+      const existingRecord = await supabase
+        .from('attendance_records')
+        .select('id, attendance_status, validation_score')
+        .eq('lecture_session_id', session.id)
+        .eq('student_id', studentId)
+        .order('marked_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (existingRecord.data) {
+        const { attendance_status, validation_score } = existingRecord.data;
+        
+        // If marked as present, prevent duplicate
+        if (attendance_status === 'present') {
+          alert(`You have already marked attendance for this class with a score of ${validation_score}/100`);
+          setIsSubmitting(false);
+          onClose();
+          return;
+        }
+
+        // Check max attempts (3 total allowed: 1 present + 2 retries for sensor issues)
+        const { data: allAttempts } = await supabase
+          .from('attendance_records')
+          .select('id', { count: 'exact' })
+          .eq('lecture_session_id', session.id)
+          .eq('student_id', studentId);
+
+        if (allAttempts && allAttempts.length >= 3) {
+          alert('Maximum attendance marking attempts (3) reached for this class');
+          setIsSubmitting(false);
+          onClose();
+          return;
+        }
+      }
+
       const { markAttendance } = await import('@/lib/attendance-service');
       const { fetchRoomDataForSession } = await import('@/lib/geolocation-service');
       const { getBarometerReading } = await import('@/lib/barometer-service');

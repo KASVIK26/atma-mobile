@@ -5,7 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -315,6 +315,20 @@ const OTPInput = ({
 }) => {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const inputRef = useRef<TextInput>(null);
+  const [isFocused, setIsFocused] = useState(false);
+
+  // Auto-focus keyboard when component mounts
+  useEffect(() => {
+    // Try immediate focus first
+    inputRef.current?.focus();
+    
+    // Also try after a short delay as backup
+    const timer = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 200);
+    
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleTextChange = (text: string) => {
     const cleaned = text.replace(/[^0-9]/g, '');
@@ -322,49 +336,53 @@ const OTPInput = ({
     onChangeText(limited);
   };
 
-  const handleContainerPress = () => {
-    inputRef.current?.focus();
-  };
-
   return (
-    <>
-      <Pressable onPress={handleContainerPress}>
-        <View style={styles.otpContainer}>
-          {Array.from({ length }).map((_, index) => (
-            <View
-              key={index}
-              style={[
-                styles.otpBox,
-                {
-                  borderColor:
-                    value.length > index ? colors.primary : colors.border,
-                },
-              ]}
-            >
-              <Text style={styles.otpBoxText}>{value[index] || ''}</Text>
-            </View>
-          ))}
-        </View>
-      </Pressable>
+    <View style={{ position: 'relative', width: '100%' }}>
+      <View style={styles.otpContainer}>
+        {Array.from({ length }).map((_, index) => (
+          <View
+            key={index}
+            style={[
+              styles.otpBox,
+              {
+                borderColor:
+                  value.length > index ? colors.primary : colors.border,
+                borderWidth: isFocused && value.length === index ? 2 : 1.5,
+              },
+            ]}
+          >
+            <Text style={styles.otpBoxText}>{value[index] || ''}</Text>
+          </View>
+        ))}
+      </View>
+      
+      {/* TextInput overlays the entire OTP container - any tap here focuses the input */}
       <TextInput
         ref={inputRef}
         value={value}
         onChangeText={handleTextChange}
         keyboardType="number-pad"
         maxLength={length}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
         style={{
           position: 'absolute',
-          left: -1000,
-          width: 50,
-          height: 50,
-          backgroundColor: 'transparent',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          opacity: 0,
           color: 'transparent',
+          backgroundColor: 'transparent',
           fontSize: 1,
+          padding: 0,
+          margin: 0,
         }}
         caretHidden={true}
-        autoFocus
+        autoFocus={true}
+        selectTextOnFocus={true}
       />
-    </>
+    </View>
   );
 };
 

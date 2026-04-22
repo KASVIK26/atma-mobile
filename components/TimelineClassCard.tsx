@@ -1,6 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import React, { useMemo } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 interface TimelineClassCardProps {
@@ -22,7 +23,6 @@ interface TimelineClassCardProps {
   sessionId?: string;
   studentId?: string;
   universityId?: string; // Required for multi-layer validation
-  onAttendanceMarked?: (success: boolean) => void;
 }
 
 const createStyles = (colors: any) =>
@@ -298,8 +298,7 @@ export const TimelineClassCard: React.FC<TimelineClassCardProps> = ({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const statusColor = getStatusColor(status, colors);
   const statusLabel = getStatusLabel(status);
-  const [isMarkingAttendance, setIsMarkingAttendance] = useState(false);
-  const [attendanceMarked, setAttendanceMarked] = useState(false);
+  const router = useRouter();
 
   const getCardContainerStyle = () => {
     switch (status) {
@@ -332,45 +331,22 @@ export const TimelineClassCard: React.FC<TimelineClassCardProps> = ({
   };
 
   const handleMarkAttendance = async () => {
-    if (!sessionId || !studentId || !universityId || attendanceMarked) {
+    if (!sessionId || !studentId || !universityId) {
       Alert.alert('Error', 'Missing required information');
       return;
     }
 
-    setIsMarkingAttendance(true);
-
-    try {
-      // Dynamic import to avoid circular dependency
-      const { markAttendance } = await import('@/lib/dashboard-service');
-      
-      // Call markAttendance with multi-layer validation support
-      // Note: GPS and pressure data would be collected from device sensors
-      // For now, passing null - update when sensor integration is ready
-      const result = await markAttendance(
-        studentId,
+    // Navigate to MarkAttendanceScreen with session ID parameter
+    // The screen will handle all sensor data collection and verification
+    router.push({
+      pathname: '/(main)/mark-attendance',
+      params: {
         sessionId,
+        studentId,
         universityId,
-        totpCode,      // TOTP code to validate
-        undefined,     // gpsLatitude - from device when available
-        undefined,     // gpsLongitude - from device when available
-        undefined      // pressureValue - from barometer when available
-      );
-
-      if (result.success) {
-        setAttendanceMarked(true);
-        Alert.alert('Success', result.message);
-        onAttendanceMarked?.(true);
-      } else {
-        Alert.alert('Error', result.message);
-        onAttendanceMarked?.(false);
-      }
-    } catch (error) {
-      console.error('[TimelineClassCard] Error marking attendance:', error);
-      Alert.alert('Error', 'Failed to mark attendance. Please try again.');
-      onAttendanceMarked?.(false);
-    } finally {
-      setIsMarkingAttendance(false);
-    }
+        fromClasses: 'true', // Indicate this came from Classes screen
+      },
+    });
   };
 
   return (
@@ -421,32 +397,17 @@ export const TimelineClassCard: React.FC<TimelineClassCardProps> = ({
             </View>
           )}
 
-          {attendanceMarkingEnabled && !attendanceMarked && (
+          {attendanceMarkingEnabled && status === 'ongoing' && (
             <Pressable
               style={[
                 styles.actionButton,
                 styles.actionButtonSecondary,
-                isMarkingAttendance && styles.actionButtonDisabled,
               ]}
               onPress={handleMarkAttendance}
-              disabled={isMarkingAttendance || attendanceMarked}
             >
-              {isMarkingAttendance ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <MaterialIcons name="check-circle" size={16} color="#FFFFFF" />
-                  <Text style={styles.actionButtonText}>Mark Attendance</Text>
-                </>
-              )}
-            </Pressable>
-          )}
-
-          {attendanceMarked && (
-            <View style={[styles.actionButton, styles.actionButtonSecondary]}>
               <MaterialIcons name="check-circle" size={16} color="#FFFFFF" />
-              <Text style={styles.actionButtonText}>Attendance Marked</Text>
-            </View>
+              <Text style={styles.actionButtonText}>Mark Attendance</Text>
+            </Pressable>
           )}
 
           <View style={styles.statusContainer}>

@@ -5,8 +5,10 @@ import { BarometerReading, calculateFloorHeightFromPressure, estimateFloorNumber
 import { ClassWithStatus, getTodaysClassesWithStatus } from '@/lib/dashboard-service';
 import { getCurrentLocation } from '@/lib/geolocation-service';
 import { getNearestBuildingSurfacePressure } from '@/lib/pressure-service';
+import supabase from '@/lib/supabase';
 import { MaterialIcons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Pressable,
@@ -14,7 +16,7 @@ import {
     StatusBar,
     StyleSheet,
     Text,
-    View,
+    View
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -197,6 +199,7 @@ export const MarkAttendanceScreen = () => {
   const { colors, theme } = useTheme();
   const { userProfile } = useAuth();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const { sessionId: routeSessionId, fromClasses } = useLocalSearchParams();
 
   const [classes, setClasses] = useState<ClassWithStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -205,7 +208,62 @@ export const MarkAttendanceScreen = () => {
   const [testMode, setTestMode] = useState(false);
   const [testRunning, setTestRunning] = useState(false);
   const [testResult, setTestResult] = useState<TestVerificationResult | null>(null);
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
   const liveBaroRef = useRef<BarometerReading | null>(null);
+
+  // Check if attendance already marked for a session
+  const checkDuplicateAttendance = useCallback(async (lectureSessionId: string, studentId: string): Promise<{ hasMarked: boolean; status?: string; score?: number }> => {
+    try {
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .select('attendance_status, validation_score')
+        .eq('lecture_session_id', lectureSessionId)
+        .eq('student_id', studentId)
+        .order('marked_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+        console.warn('[MarkAttendanceScreen] Error checking attendance:', error);
+        return { hasMarked: false };
+      }
+
+      if (data) {
+        // If already marked as present, prevent further marking
+        if (data.attendance_status === 'present') {
+          return {
+            hasMarked: true,
+            status: data.attendance_status,
+            score: data.validation_score,
+          };
+        }
+
+        // If marked as absent, allow max 2 more attempts (for sensor issues)
+        // Get count of all attempts
+        const { data: allAttempts, error: countError } = await supabase
+          .from('attendance_records')
+          .select('id', { count: 'exact' })
+          .eq('lecture_session_id', lectureSessionId)
+          .eq('student_id', studentId);
+
+        if (!countError) {
+          const attemptCount = allAttempts?.length || 0;
+          if (attemptCount >= 3) { // Allow 3 total attempts (1 present + 2 retries for sensor issues)
+            return {
+              hasMarked: true,
+              status: 'max_attempts_reached',
+              score: data.validation_score,
+            };
+          }
+        }
+      }
+
+      return { hasMarked: false };
+    } catch (error) {
+      console.error('[MarkAttendanceScreen] Exception checking duplicate:', error);
+      return { hasMarked: false };
+    }
+  }, []);
 
   // Fetch today's classes and find ongoing one
   useEffect(() => {
@@ -224,6 +282,27 @@ export const MarkAttendanceScreen = () => {
         );
 
         setClasses(classesWithStatus);
+
+        // If coming from Classes screen with specific sessionId
+        if (routeSessionId && fromClasses === 'true') {
+          const selectedSession = classesWithStatus.find((c) => c.id === routeSessionId);
+          if (selectedSession) {
+            // Check if attendance already marked
+            const { hasMarked, status, score } = await checkDuplicateAttendance(routeSessionId, userProfile.id);
+            
+            if (hasMarked) {
+              if (status === 'present') {
+                setDuplicateError(`You have already marked attendance for this class with a score of ${score}/100`);
+              } else if (status === 'max_attempts_reached') {
+                setDuplicateError('Maximum attendance marking attempts (3) reached for this class');
+              }
+            }
+            
+            setOngoingSession(selectedSession);
+            setIsLoading(false);
+            return;
+          }
+        }
 
         // Find the ongoing session
         const ongoing = classesWithStatus.find((c) => c.status === 'ongoing');
@@ -250,7 +329,7 @@ export const MarkAttendanceScreen = () => {
     };
 
     fetchClasses();
-  }, [userProfile?.id, userProfile?.university_id]);
+  }, [userProfile?.id, userProfile?.university_id, routeSessionId, fromClasses, checkDuplicateAttendance]);
 
   // Subscribe to barometer when in test mode so we have a reading ready
   useEffect(() => {
@@ -427,11 +506,46 @@ export const MarkAttendanceScreen = () => {
                 )}
               </View>
 
+              {/* Duplicate Error Alert */}
+              {duplicateError && (
+                <View style={{
+                  marginTop: 16,
+                  padding: 12,
+                  borderRadius: 10,
+                  backgroundColor: '#FF3B30' + '22',
+                  borderLeftWidth: 4,
+                  borderLeftColor: '#FF3B30',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                }}>
+                  <MaterialIcons name="error" size={20} color="#FF3B30" />
+                  <Text style={{
+                    flex: 1,
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: '#FF3B30',
+                  }}>
+                    {duplicateError}
+                  </Text>
+                </View>
+              )}
+
               {/* Mark Attendance / Test Button */}
               {(() => {
                 const attendanceEnabled = (ongoingSession || classes[0])?.attendance_marking_enabled;
                 const isTestMode = testMode;
-                const isDisabled = testRunning || (!isTestMode && !attendanceEnabled);
+                const isDisabled = testRunning || (!isTestMode && !attendanceEnabled) || duplicateError !== null;
+
+                if (duplicateError) {
+                  // Already marked - show disabled button
+                  return (
+                    <View style={[styles.markButton, { backgroundColor: colors.border, marginTop: 16 }]}>
+                      <MaterialIcons name="lock" size={18} color={colors.textSecondary} />
+                      <Text style={[styles.markButtonText, { color: colors.textSecondary }]}>Already Marked</Text>
+                    </View>
+                  );
+                }
 
                 if (!isTestMode && !attendanceEnabled) {
                   // Teacher hasn't started the session yet

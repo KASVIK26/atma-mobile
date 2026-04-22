@@ -448,6 +448,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // suspended.  Re-checking here guarantees:
   //   • Active session  → profile is re-fetched if it went missing
   //   • Expired session → state is properly cleared so routing redirects to login
+  // 
+  // CRITICAL: Add timeout protection to prevent stuck splash screen if network
+  // is unavailable or hung during foreground resume.
   useEffect(() => {
     let lastState = AppState.currentState;
 
@@ -458,24 +461,82 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!comingToForeground) return;
 
       console.log('[AuthContext] App returned to foreground — refreshing session');
+      
+      // Timeout controller for foreground resume operations
+      // If getSession() or profile fetch takes > 6 seconds, force timeout
+      const resumeAbortController = new AbortController();
+      const resumeTimeout = setTimeout(() => {
+        console.warn('[AuthContext] Foreground resume timeout — aborting getSession and profile fetch');
+        resumeAbortController.abort();
+      }, 6_000);
+
       try {
         const {
           data: { session: currentSession },
           error,
         } = await supabase.auth.getSession();
 
+        if (resumeAbortController.signal.aborted) {
+          console.warn('[AuthContext] getSession was aborted due to timeout');
+          clearTimeout(resumeTimeout);
+          return;
+        }
+
         if (error) {
           console.warn('[AuthContext] getSession error on resume:', error.message);
+          clearTimeout(resumeTimeout);
           return;
         }
 
         if (currentSession?.user) {
+          // Validate session isn't corrupted — check if user ID changed
+          const storedUser = useAuthStore.getState().user;
+          if (storedUser?.id && storedUser.id !== currentSession.user.id) {
+            console.warn('[AuthContext] Session corruption detected — user ID mismatch during resume');
+            console.warn('[AuthContext] Stored user:', storedUser.id.substring(0, 8) + '***');
+            console.warn('[AuthContext] Current session user:', currentSession.user.id.substring(0, 8) + '***');
+            // Clear all state to force re-authentication
+            clearAll();
+            userProfileRef.current = null;
+            clearTimeout(resumeTimeout);
+            return;
+          }
+
           setSession(currentSession);
           setUser(currentSession.user);
           // Re-fetch profile only if it's gone (avoids unnecessary network calls)
           if (!userProfileRef.current) {
-            console.log('[AuthContext] Profile missing after resume — re-fetching');
-            await fetchUserProfile(currentSession.user.id);
+            console.log('[AuthContext] Profile missing after resume — re-fetching with timeout');
+            
+            // Wrap fetchUserProfile with timeout
+            const profileFetchPromise = fetchUserProfile(currentSession.user.id);
+            const profileFetchWithTimeout = Promise.race([
+              profileFetchPromise,
+              new Promise<void>((_, reject) => {
+                const timeoutId = setTimeout(() => {
+                  console.warn('[AuthContext] Profile fetch on resume timed out after 5 seconds');
+                  reject(new Error('Profile fetch timeout on resume'));
+                }, 5_000);
+                resumeAbortController.signal.addEventListener('abort', () => {
+                  clearTimeout(timeoutId);
+                  reject(new Error('Profile fetch aborted'));
+                });
+              }),
+            ]);
+
+            try {
+              await profileFetchWithTimeout;
+            } catch (profileErr: any) {
+              console.warn('[AuthContext] Profile fetch on resume failed:', profileErr.message);
+              // CRITICAL: Even if profile fetch fails/times out, we MUST release the lock
+              // so routing can proceed. User might be in a transient state but we don't
+              // want them stuck on a blank screen.
+              if (isFetchingProfileRef.current) {
+                console.warn('[AuthContext] Forcing profile load lock release due to resume timeout');
+                isFetchingProfileRef.current = false;
+                setIsProfileLoading(false);
+              }
+            }
           }
           // Ensure the token auto-refresh is running after a long background suspension
           supabase.auth.startAutoRefresh();
@@ -489,6 +550,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       } catch (err) {
         console.warn('[AuthContext] Error during foreground session refresh:', err);
+        // If there was an error, also release the profile loading lock
+        if (isFetchingProfileRef.current) {
+          console.warn('[AuthContext] Releasing profile load lock due to error');
+          isFetchingProfileRef.current = false;
+          setIsProfileLoading(false);
+        }
+      } finally {
+        clearTimeout(resumeTimeout);
       }
     };
 
