@@ -773,7 +773,7 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 ## 👨‍💻 Author & Acknowledgments
 
-**Created by**: Your Team  
+**Created by**: Vikas Kasera
 **Last Updated**: March 2026
 
 ### Technologies Used
